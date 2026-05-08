@@ -1,4 +1,4 @@
-# Reachy Mini Jetson Assistant
+# Jetson Voice Assistant
 # Tested on: Jetson Orin Nano 8GB, JetPack 6, Python 3.10
 
 # Core
@@ -21,22 +21,6 @@ faster-whisper>=1.0.0
 
 # TTS — Kokoro (GPU via ONNX Runtime, runs in subprocess for GPL isolation)
 kokoro-onnx>=0.4.0
-
-# Emotion — lightweight sentiment classifier (ONNX + fast tokenizer)
-tokenizers>=0.15.0
-
-# Vision — camera capture for VLM
-opencv-python-headless>=4.8.0
-
-# RAG — vector store + embeddings
-chromadb>=0.4.0
-
-# Web UI (optional — only needed for run_web_vision_chat.py)
-fastapi>=0.104.0
-uvicorn>=0.24.0
-
-# Reachy Mini SDK (robot control)
-# Installed separately: pip install reachy-mini
 
 # Jetson-specific (install separately, see README):
 #   pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126

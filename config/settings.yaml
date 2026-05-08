@@ -1,19 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
-# SPDX-License-Identifier: Apache-2.0
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-# http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Reachy Mini Jetson Assistant — Configuration
+# Jetson Voice Assistant — Configuration
 
 llm:
   model: ""                           # empty = auto-detect from server
@@ -23,21 +8,13 @@ llm:
   temperature: 0.7
   timeout: 120.0
   system_prompt: |
-    You are Reachy Mini, a robot running on a Jetson Orin Nano.
+    You are a helpful voice assistant running on an NVIDIA Jetson.
     Your responses will be spoken aloud via text-to-speech.
     Answer in one sentence when possible, two max. Be direct.
     Only answer what was asked. Do not volunteer extra details.
-    If the provided context does not contain the answer, say "Sorry, I don't know the answer to that."
     Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting.
     Write numbers and units as spoken words when short.
     Do not include terminal commands unless specifically asked.
-  system_prompt_no_rag: |
-    You are Reachy Mini, a robot running on a Jetson Orin Nano.
-    Your responses will be spoken aloud via text-to-speech.
-    Answer in one to two sentences. Be direct and concise.
-    Answer from your own knowledge.
-    Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting.
-    Write numbers and units as spoken words when short.
 
 stt:
   model: "small.en"                   # tiny.en, base.en, small.en
@@ -55,8 +32,8 @@ tts:
 
 audio:
   sample_rate: 16000
-  channels: 2
-  input_device: "Reachy Mini Audio"
+  channels: 1
+  input_device: null                  # null = auto-detect first USB mic; set to e.g. "USB Audio" to match by name
 
 vad:
   use_silero: true                    # true = Silero neural VAD (much better), false = energy-only
@@ -68,61 +45,3 @@ vad:
   chunk_ms: 32                        # audio chunk size (32ms required for Silero, 30ms for energy-only)
   min_utterance_secs: 0.8             # reject utterances shorter than this (filters coughs/bumps)
   min_utterance_rms: 0.025            # reject utterances quieter than this (filters background chatter)
-
-vision:
-  camera_device: 1                    # /dev/video1
-  width: 640
-  height: 480
-  jpeg_quality: 80                    # JPEG compression (lower = smaller payload)
-  frames: 1                           # max frames to send per utterance
-  capture_fps: 3.0                    # background capture rate (frames/sec)
-  system_prompt: |
-    You are Reachy Mini, a friendly robot made by Pollen Robotics, running on an NVIDIA Jetson Orin Nano.
-    You use the Cosmos Reason2 vision-language model for understanding what you see.
-    An image is always attached. Only use the image when the user asks about what you see, colors, objects, or the scene.
-    Otherwise ignore the image completely and respond naturally.
-    Answer in one short sentence. No markdown or formatting.
-  few_shot:
-    - role: "user"
-      content: "Hi!"
-    - role: "assistant"
-      content: "Hello!"
-    - role: "user"
-      content: "Thank you so much."
-    - role: "assistant"
-      content: "You're welcome!"
-    - role: "user"
-      content: "Okay, bye!"
-    - role: "assistant"
-      content: "Goodbye, see you later!"
-
-emotion:
-  enabled: true                       # enable sentiment-based emotion detection + reactive movements
-
-reachy:
-  enabled: true                       # set false to skip robot connection entirely
-  spawn_daemon: true
-  timeout: 30.0                       # Zenoh connection timeout (seconds)
-  media_backend: "no_media"           # "no_media" = our app handles camera/audio
-  wake_on_start: true                 # call wake_up() on fresh daemon start
-  sleep_on_exit: true                 # call goto_sleep() on exit (blocks ~4s)
-  antenna_rest_position: [0.0, 0.0]   # antenna target after wake-up
-  daemon_retry_attempts: 3            # connection retries
-  daemon_startup_wait: 15.0           # seconds to wait before retry
-
-web:
-  ui_fps: 10.0                        # camera FPS for browser UI (independent of VLM ring buffer)
-  host: "0.0.0.0"
-  port: 8090
-
-rag:
-  enabled: true
-  knowledge_dir: "./knowledge_base"
-  persist_dir: "./data/chromadb"
-  embedding_backend: "llamacpp"       # "llamacpp" (GPU), "ollama", or "local"
-  embedding_model: "bge-small-en-v1.5"
-  embedding_base_url: "http://localhost:8081"
-  n_results: 1
-  min_relevance: 0.5
-  chunk_size: 200
-  chunk_overlap: 20

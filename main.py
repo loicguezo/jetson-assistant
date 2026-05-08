@@ -15,11 +15,11 @@
 # limitations under the License.
 
 """
-Reachy Mini Jetson Assistant
+Jetson Voice Assistant
 On-device, GPU-accelerated for NVIDIA Jetson
 
 Usage:
-    python main.py chat -t -m /path/to/model.gguf   # Text chat
+    python main.py chat -m /path/to/model.gguf   # Text chat
     python main.py ask "question" -m /path/to/model.gguf  # Single question
     python main.py info  # System info
 """

@@ -13,11 +13,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Pipeline — shared audio I/O, VAD, TTS streaming, and mic recording.
-
-Extracts the common infrastructure used by both run_voice_chat.py and
-run_vision_chat.py so each entry point only contains its unique logic.
-"""
+"""Pipeline — audio I/O, VAD, TTS streaming, and mic recording."""
 
 import sys
 import time
@@ -428,7 +424,6 @@ def stream_and_speak(
     prompt: str,
     system_prompt: str,
     pa_sink: Optional[str] = None,
-    images_b64: Optional[list[str]] = None,
     few_shot: Optional[list[dict]] = None,
     first_chunk_words: int = 3,
     max_chunk_words: int = 8,
@@ -454,7 +449,7 @@ def stream_and_speak(
 
     for chunk_data in llm.generate_stream(
         prompt=prompt, system_prompt=system_prompt,
-        images_b64=images_b64, few_shot=few_shot,
+        few_shot=few_shot,
     ):
         content, meta = chunk_data if isinstance(chunk_data, tuple) else (chunk_data, {})
         if content:
