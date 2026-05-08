@@ -1,57 +1,29 @@
 # Setup Guide
 
-Full installation instructions for the Reachy Mini Jetson Assistant.
+Full installation instructions for the Jetson Voice Assistant.
 
 ## Prerequisites
 
 ### Hardware
 
 - **NVIDIA Jetson Orin Nano** (8GB) — other Jetson modules may work but are untested
-- **[Reachy Mini Lite](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started)** — the developer version, USB connection to your computer. Provides camera, microphone, speaker, and 9-DOF motor control in one cable. [Buy Reachy Mini](https://www.hf.co/reachy-mini/)
+- **USB microphone** — any USB audio device works; check `arecord -l` after connecting
+- **Speaker** — USB or analog (3.5mm) output
 - **NVMe SSD** recommended — for swap space and model storage
-
-If you're new to Reachy Mini, start with the [official getting started guide](https://huggingface.co/docs/reachy_mini/index) and the [Reachy Mini Lite setup](https://huggingface.co/docs/reachy_mini/platforms/reachy_mini_lite/get_started). The [Python SDK documentation](https://huggingface.co/docs/reachy_mini/SDK/readme) covers movement, camera, audio, and AI integrations.
 
 ### Software
 
 - **JetPack 6.x** (L4T r36.x, Ubuntu 22.04, CUDA 12.6)
 - **Python 3.10** (ships with JetPack 6 Ubuntu 22.04)
-- **Docker** with NVIDIA runtime (`nvidia-container-toolkit`)
 - **PulseAudio** (for mic/speaker multiplexing)
 
-> **Important:** This project requires **Python 3.10** specifically. The Jetson ONNX Runtime GPU wheels, CTranslate2 builds, and Reachy Mini SDK are all built against Python 3.10 on JetPack 6. Using a different Python version will cause compatibility issues.
+> **Important:** This project requires **Python 3.10** specifically. The Jetson ONNX Runtime GPU wheels and CTranslate2 builds are built against Python 3.10 on JetPack 6. Using a different Python version will cause compatibility issues.
 
 ## Hardware Setup
 
-### Reachy Mini Lite
+### NVMe Swap (Recommended for 8GB Jetson)
 
-1. Connect Reachy Mini Lite to your Jetson via USB. The robot provides camera, microphone, speaker, and motor control over a single USB connection.
-
-2. Add udev rules so the SDK can access the robot's serial ports without root:
-
-```bash
-echo 'SUBSYSTEM=="tty", ATTRS{idVendor}=="2e8a", ATTRS{idProduct}=="000a", MODE="0666", SYMLINK+="reachy_mini"' \
-  | sudo tee /etc/udev/rules.d/99-reachy-mini.rules
-sudo udevadm control --reload-rules && sudo udevadm trigger
-```
-
-3. Add your user to the `dialout` group and reboot:
-
-```bash
-sudo usermod -aG dialout $USER
-sudo reboot
-```
-
-4. Verify the device is visible:
-
-```bash
-ls -la /dev/ttyACM*
-# Should show /dev/ttyACM0, /dev/ttyACM1, etc.
-```
-
-### NVMe Swap (Required for 8GB Jetson)
-
-Running STT + VLM + TTS simultaneously exceeds 8GB RAM. Setting up swap on NVMe prevents OOM kills:
+Running STT + LLM + TTS simultaneously can be memory-intensive. Setting up swap on NVMe prevents OOM kills:
 
 ```bash
 sudo fallocate -l 8G /mnt/nvme/swapfile   # adjust path to your NVMe mount
@@ -80,8 +52,8 @@ sudo apt-get install -y \
 ### Step 2: Clone and Create Virtual Environment
 
 ```bash
-git clone https://github.com/NVIDIA-AI-IOT/reachy-mini-jetson-assistant
-cd reachy-mini-jetson-assistant
+git clone https://github.com/segutwein/jetson-assistant
+cd jetson-assistant
 python3.10 -m venv venv
 source venv/bin/activate
 ```
@@ -101,15 +73,10 @@ The default `onnxruntime` from pip is CPU-only. For GPU inference (Kokoro TTS, S
 pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 ```
 
-> If `CUDAExecutionProvider` isn't listed after install, uninstall the CPU version first: `pip uninstall onnxruntime && pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
+> If `CUDAExecutionProvider` isn't listed after install, uninstall the CPU version first:
+> `pip uninstall onnxruntime && pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
 
-### Step 5: Install Reachy Mini SDK
-
-```bash
-pip install reachy-mini
-```
-
-### Step 6: Pin NumPy (Compatibility Fix)
+### Step 5: Pin NumPy (Compatibility Fix)
 
 The Jetson `onnxruntime-gpu` wheel requires NumPy 1.x:
 
@@ -117,7 +84,7 @@ The Jetson `onnxruntime-gpu` wheel requires NumPy 1.x:
 pip install "numpy==1.26.4"
 ```
 
-### Step 7: Build CTranslate2 with CUDA (GPU-Accelerated STT)
+### Step 6: Build CTranslate2 with CUDA (GPU-Accelerated STT)
 
 The pip `ctranslate2` package is CPU-only. For GPU-accelerated speech-to-text on Jetson, build from source:
 
@@ -146,7 +113,7 @@ pip install .
 Persist the library path in your venv activation script:
 
 ```bash
-echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/reachy-mini-jetson-assistant/venv/bin/activate
+echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/jetson-assistant/venv/bin/activate
 ```
 
 ### Verify Installation
@@ -156,7 +123,6 @@ source venv/bin/activate
 python3 -c "
 import ctranslate2; print('CTranslate2 CUDA devices:', ctranslate2.get_cuda_device_count())
 import onnxruntime; print('ONNX providers:', onnxruntime.get_available_providers())
-from reachy_mini import ReachyMini; print('Reachy Mini SDK: OK')
 import faster_whisper; print('faster-whisper: OK')
 import kokoro_onnx; print('kokoro-onnx: OK')
 "
@@ -166,28 +132,52 @@ Expected output:
 ```
 CTranslate2 CUDA devices: 1
 ONNX providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
-Reachy Mini SDK: OK
 faster-whisper: OK
 kokoro-onnx: OK
 ```
 
-## Models
+## LLM Setup
 
-### LLM / VLM (served via llama.cpp Docker)
+The assistant connects to a locally running LLM server. Two backends are supported:
 
-Models download automatically from HuggingFace on first launch. No manual download needed.
+### Option A: llama.cpp (Docker)
 
-| Model | Use | Launch Command |
-|-------|-----|----------------|
-| Cosmos-Reason2-2B (Q4_K_M) | Vision VLM | `NP=1 ./run_llama_cpp.sh Kbenkhaled/Cosmos-Reason2-2B-GGUF:Q4_K_M` |
-| Gemma 3 1B (Q8) | Text LLM | `./run_llama_cpp.sh ggml-org/gemma-3-1b-it-GGUF:Q8_0` |
-| bge-small-en-v1.5 (Q8) | RAG embeddings | `./run_llama_embedding.sh ggml-org/bge-small-en-v1.5-Q8_0-GGUF:Q8_0` |
+```bash
+docker run --rm --runtime nvidia --gpus all \
+  --name assistant-llm \
+  -p 8080:8080 \
+  ghcr.io/ggml-org/llama.cpp:server-cuda \
+  -hf ggml-org/gemma-3-1b-it-GGUF:Q8_0 \
+  --port 8080 --host 0.0.0.0 -ngl 99
+```
 
-Models are cached in `~/.cache/huggingface` and reused across runs.
+Wait until you see `llama server listening at http://0.0.0.0:8080`.
 
-### TTS Voices
+In `config/settings.yaml`:
+```yaml
+llm:
+  backend: "openai"
+  base_url: "http://localhost:8080"
+```
 
-**Kokoro TTS** (default) downloads automatically on first run (~340 MB). No manual step needed.
+### Option B: Ollama
+
+```bash
+ollama serve
+ollama pull gemma3:1b
+```
+
+In `config/settings.yaml`:
+```yaml
+llm:
+  backend: "ollama"
+  base_url: "http://localhost:11434"
+  model: "gemma3:1b"
+```
+
+## TTS Voices
+
+Kokoro TTS downloads automatically on first run (~340 MB). No manual step needed.
 
 To pre-download for offline use:
 
@@ -196,26 +186,29 @@ wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/mo
 wget -P voices/ https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 ```
 
-Configure voice in `config/settings.yaml`:
+Available voices: `af_sarah`, `af_bella`, `am_adam`, `bf_emma`, `bm_george` (configure in `settings.yaml`).
 
-```yaml
-tts:
-  voice: "af_sarah"    # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george
-```
+## Microphone Setup
 
-### Emotion Model
-
-The emotion classifier (DistilBERT SST-2, ~268 MB) downloads automatically on first run. No manual step needed.
-
-To pre-download for offline use:
+Connect your USB microphone and check it is detected:
 
 ```bash
-mkdir -p models/emotion
-wget -O models/emotion/model.onnx \
-  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/model.onnx"
-wget -O models/emotion/tokenizer.json \
-  "https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/onnx/tokenizer.json"
+arecord -l
 ```
+
+Example output:
+```
+card 2: Device [USB Audio Device], device 0: USB Audio [USB Audio]
+```
+
+Set the device hint in `config/settings.yaml` to a substring of your device name:
+
+```yaml
+audio:
+  input_device: "USB Audio"   # matches any device containing this string
+```
+
+Leave `input_device: null` to auto-detect the first available input device.
 
 ## Troubleshooting
 
@@ -229,14 +222,11 @@ pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/
 **CTranslate2 not finding CUDA:**
 Make sure the library path is set: `export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH`
 
-**VLM server not responding:**
+**LLM server not responding:**
 Check the Docker container is running: `docker ps`. View logs: `docker logs assistant-llm`
 
-**Process won't exit / robot stays awake after Ctrl+C:**
-The app handles Ctrl+C cleanly — the robot should go to sleep. If the process is stuck, run `pkill -9 -f run_web_vision_chat` and `pkill -f reachy-mini-daemon`.
+**Mic not found / no audio:**
+Run `arecord -l` to list devices. Set `audio.input_device` in `settings.yaml` to a substring of your device name. If the mic is silent, check `alsamixer` and ensure the capture channel is unmuted.
 
-**Port 8090 already in use:**
-A previous instance is still running. Kill it: `lsof -ti :8090 | xargs kill -9`
-
-**Camera not found:**
-Check the device is available: `ls /dev/video*`. If another process holds it: `fuser -k /dev/video0`
+**`arecord` / `parecord` errors:**
+Try killing stale processes: `pkill -9 parecord; pkill -9 arecord`
