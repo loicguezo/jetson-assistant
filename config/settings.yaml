@@ -3,7 +3,7 @@
 llm:
   model: ""                           # empty = auto-detect from server
   base_url: "http://localhost:8080"
-  backend: "openai"                   # "openai" (llama.cpp) or "ollama"
+  backend: "openai"                   # "openai" = llama.cpp OpenAI-compatible API
   max_tokens: 128
   temperature: 0.7
   timeout: 120.0

@@ -20,10 +20,12 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 
 | Component | Library | Acceleration |
 |-----------|---------|:---:|
-| **LLM** | llama.cpp or Ollama | GPU |
+| **LLM** | llama.cpp (native, no Docker) | GPU (CUDA) |
 | **STT** | faster-whisper | GPU (CUDA) |
 | **TTS** | Kokoro ONNX | GPU (CUDA) |
 | **VAD** | Silero VAD | CPU |
+
+llama.cpp is compiled directly on the Jetson — no Docker, no Python wrapper overhead. This keeps the memory footprint as small as possible on the shared 8 GB unified memory.
 
 ## Prerequisites
 
@@ -33,27 +35,18 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 
 ## Setup
 
-See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, Python packages, model downloads, and troubleshooting.
+See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, building llama.cpp, Python packages, model downloads, and troubleshooting.
 
 ## Usage
 
 ### Voice Chat
 
-**Terminal 1** — Start the LLM server (llama.cpp example):
+**Terminal 1** — Start the LLM server:
 
 ```bash
-docker run --rm --runtime nvidia --gpus all \
-  -p 8080:8080 \
-  ghcr.io/ggml-org/llama.cpp:server-cuda \
-  -hf ggml-org/gemma-3-1b-it-GGUF:Q8_0 \
-  --port 8080 --host 0.0.0.0 -ngl 99
-```
-
-Or with Ollama:
-
-```bash
-ollama serve
-ollama pull gemma3:1b
+~/llama.cpp/build/bin/llama-server \
+  -m ~/models/gemma-3-4b-it-Q4_K_M.gguf \
+  --port 8080 --host 127.0.0.1 -ngl 99 -c 4096
 ```
 
 **Terminal 2** — Start the assistant:
@@ -68,15 +61,10 @@ Speak anytime — the assistant auto-detects speech. Press **Ctrl+C** to quit.
 ### CLI (Text Only)
 
 ```bash
-python3 main.py chat                           # interactive text chat
-python3 main.py ask "What is the Jetson Orin?" # single question
-python3 main.py info                           # system info + dependency check
-```
-
-### Stopping the LLM Docker Container
-
-```bash
-docker stop assistant-llm
+source venv/bin/activate
+python3 main.py chat                            # interactive text chat
+python3 main.py ask "What is the Jetson Orin?"  # single question
+python3 main.py info                            # system info + dependency check
 ```
 
 ## Configuration
@@ -85,21 +73,13 @@ All settings live in `config/settings.yaml`:
 
 | Section | What It Controls |
 |---------|-----------------|
-| `llm` | Server URL, backend (`openai`/`ollama`), model, temperature, max tokens, system prompt |
+| `llm` | Server URL, model, temperature, max tokens, system prompt |
 | `stt` | Whisper model size, CUDA device, beam size |
 | `tts` | Voice, speed, language, chunking |
 | `audio` | Sample rate, input device name hint |
 | `vad` | Silero threshold, silence duration, utterance filters |
 
 **Selecting your microphone:** by default the assistant searches for a device matching `"USB Audio"`. Set `audio.input_device` in `settings.yaml` to a substring of your device name (check `arecord -l`), or leave it `null` to auto-detect the first available input.
-
-**Changing the LLM backend:**
-```yaml
-llm:
-  backend: "ollama"           # "openai" for llama.cpp, "ollama" for Ollama
-  base_url: "http://localhost:11434"
-  model: "gemma3:1b"
-```
 
 ## Project Structure
 
@@ -108,7 +88,7 @@ jetson-assistant/
 ├── app/
 │   ├── pipeline.py      # Audio I/O, VAD, TTS streaming, mic recording
 │   ├── config.py        # Configuration dataclasses + YAML loader
-│   ├── llm.py           # LLM client (OpenAI-compatible + Ollama)
+│   ├── llm.py           # LLM client (OpenAI-compatible API)
 │   ├── stt.py           # faster-whisper speech-to-text
 │   ├── tts.py           # TTS client (spawns subprocess worker)
 │   ├── tts_worker.py    # TTS subprocess (Kokoro + GPL deps, isolated)
@@ -127,20 +107,21 @@ jetson-assistant/
 | Metric | Value |
 |--------|-------|
 | STT latency | ~0.7s (small.en, beam=1) |
-| LLM TTFT | ~1–2s (Gemma 3 1B Q8, warm) |
+| LLM TTFT | ~1–2s (Gemma 3 4B Q4_K_M, warm) |
 | TTS latency (first chunk) | ~0.3s (Kokoro GPU) |
 | End-to-end (speak → response) | ~2–4s |
-| Peak RAM | ~4–5 GB (STT + LLM + TTS) |
+| Peak RAM | ~5–6 GB (STT + LLM + TTS) |
 
 ## Roadmap
 
 - [x] Orin Nano 8GB — full pipeline validated
 - [x] Kokoro TTS GPU acceleration
 - [x] Silero VAD for robust speech detection
+- [x] Native llama.cpp (no Docker overhead)
 - [ ] Wake word detection (hands-free activation)
 - [ ] Multi-turn conversation memory
 - [ ] Multi-language support
-- [ ] Ollama auto-start
+- [ ] Auto-start llama-server as systemd service
 
 ## Troubleshooting
 
