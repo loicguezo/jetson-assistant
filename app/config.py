@@ -17,7 +17,7 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional
+from typing import Optional
 from pathlib import Path
 import yaml
 
@@ -31,7 +31,6 @@ class LLMConfig:
     temperature: float = 0.7
     timeout: float = 120.0
     system_prompt: str = "You are a helpful AI assistant."
-    system_prompt_no_rag: str = "You are a helpful AI assistant. Answer from your own knowledge."
 
 
 @dataclass
@@ -55,8 +54,8 @@ class TTSConfig:
 @dataclass
 class AudioConfig:
     sample_rate: int = 16000
-    channels: int = 2
-    input_device: Optional[str] = "Reachy Mini Audio"
+    channels: int = 1
+    input_device: Optional[str] = None
 
 
 @dataclass
@@ -72,71 +71,12 @@ class VADConfig:
     silero_threshold: float = 0.5
 
 
-@dataclass
-class VisionConfig:
-    camera_device: int = 0
-    width: int = 640
-    height: int = 480
-    jpeg_quality: int = 80
-    frames: int = 3
-    capture_fps: float = 3.0
-    system_prompt: str = (
-        "You are a vision assistant on an NVIDIA Jetson device with a live camera. "
-        "Answer in one to two sentences. Be direct and concise."
-    )
-    few_shot: List[Dict[str, str]] = field(default_factory=list)
-
-
-@dataclass
-class ReachyConfig:
-    enabled: bool = True
-    spawn_daemon: bool = True
-    timeout: float = 30.0
-    media_backend: str = "no_media"
-    wake_on_start: bool = True
-    sleep_on_exit: bool = False
-    antenna_rest_position: List[float] = field(default_factory=lambda: [0.0, 0.0])
-    daemon_retry_attempts: int = 3
-    daemon_startup_wait: float = 15.0
-
-
-@dataclass
-class EmotionConfig:
-    enabled: bool = True
-
-
-@dataclass
-class RAGConfig:
-    enabled: bool = True
-    knowledge_dir: str = "./knowledge_base"
-    persist_dir: str = "./data/chromadb"
-    embedding_backend: str = "llamacpp"
-    embedding_model: str = "bge-small-en-v1.5"
-    embedding_base_url: str = "http://localhost:8081"
-    n_results: int = 3
-    min_relevance: float = 0.5
-    chunk_size: int = 200
-    chunk_overlap: int = 20
-
-
-@dataclass
-class WebConfig:
-    ui_fps: float = 10.0
-    host: str = "0.0.0.0"
-    port: int = 8090
-
-
 _SECTIONS = [
     ("llm", "llm", LLMConfig),
     ("stt", "stt", STTConfig),
     ("tts", "tts", TTSConfig),
     ("audio", "audio", AudioConfig),
     ("vad", "vad", VADConfig),
-    ("vision", "vision", VisionConfig),
-    ("reachy", "reachy", ReachyConfig),
-    ("emotion", "emotion", EmotionConfig),
-    ("rag", "rag", RAGConfig),
-    ("web", "web", WebConfig),
 ]
 
 
@@ -147,11 +87,6 @@ class Config:
     tts: TTSConfig = field(default_factory=TTSConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
-    vision: VisionConfig = field(default_factory=VisionConfig)
-    reachy: ReachyConfig = field(default_factory=ReachyConfig)
-    emotion: EmotionConfig = field(default_factory=EmotionConfig)
-    rag: RAGConfig = field(default_factory=RAGConfig)
-    web: WebConfig = field(default_factory=WebConfig)
 
     @classmethod
     def load(cls, config_path: Optional[str] = None) -> "Config":

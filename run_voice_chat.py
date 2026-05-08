@@ -16,11 +16,10 @@
 
 """
 Voice Chat — speak anytime, dynamic recording.
-Mic -> Silero/energy VAD -> STT -> (RAG) -> LLM stream -> TTS stream -> Speaker
+Mic -> Silero/energy VAD -> STT -> LLM stream -> TTS stream -> Speaker
 
 Usage:
-  python3 run_voice_chat.py            # with RAG
-  python3 run_voice_chat.py --no-rag   # without RAG
+  python3 run_voice_chat.py
 """
 
 import sys
@@ -44,21 +43,23 @@ console = Console()
 
 
 def main():
-    use_rag = "--no-rag" not in sys.argv
     config = Config.load()
-    active_system_prompt = config.llm.system_prompt if use_rag else config.llm.system_prompt_no_rag
 
     console.print(Panel.fit(
-        "[bold cyan]Voice Chat[/bold cyan]\n"
+        "[bold cyan]Voice Assistant[/bold cyan]\n"
         "Speak anytime — auto-detects speech\n"
-        f"[dim]{'RAG on' if use_rag else 'RAG off'}  |  Ctrl-C to quit[/dim]",
+        "[dim]Ctrl-C to quit[/dim]",
         border_style="cyan",
     ))
 
     # ── Audio setup ──────────────────────────────────────────────
-    result = find_alsa_device(name_hint=config.audio.input_device or "Reachy Mini Audio")
+    mic_hint = config.audio.input_device or "USB Audio"
+    result = find_alsa_device(name_hint=mic_hint)
     if not result:
-        console.print("[red]No mic found![/red]")
+        # Try any available mic as fallback
+        result = find_alsa_device(name_hint="")
+    if not result:
+        console.print("[red]No mic found! Check 'arecord -l' for available devices.[/red]")
         return
     card, dev, mic_name = result
     hw = f"hw:{card},{dev}"
@@ -87,7 +88,7 @@ def main():
         model=config.llm.model, base_url=config.llm.base_url,
         backend=config.llm.backend, max_tokens=config.llm.max_tokens,
         temperature=config.llm.temperature, timeout=config.llm.timeout,
-        system_prompt=active_system_prompt,
+        system_prompt=config.llm.system_prompt,
     )
     llm.load()
     console.print(f"  ✓ LLM ({llm.model})")
@@ -101,29 +102,10 @@ def main():
     else:
         console.print("  ⚠ TTS unavailable")
 
-    rag = None
-    if use_rag and config.rag.enabled:
-        try:
-            from app.rag import KnowledgeBase, RAGRetriever
-            kb = KnowledgeBase(
-                persist_dir=config.rag.persist_dir,
-                embedding_backend=config.rag.embedding_backend,
-                embedding_model=config.rag.embedding_model,
-                embedding_base_url=config.rag.embedding_base_url,
-                chunk_size=config.rag.chunk_size,
-                chunk_overlap=config.rag.chunk_overlap,
-            )
-            count, rebuilt = kb.sync_directory(config.rag.knowledge_dir)
-            rag = RAGRetriever(kb, config.rag.n_results, config.rag.min_relevance)
-            status = f"rebuilt, {count} chunks" if rebuilt else f"{count} chunks, cached"
-            console.print(f"  ✓ RAG ({status})")
-        except Exception as e:
-            console.print(f"  ⚠ RAG: {e}")
-
     # ── Start mic ────────────────────────────────────────────────
     effective_chunk_ms = 32 if silero_model else config.vad.chunk_ms
     mic = MicRecorder(console, chunk_ms=effective_chunk_ms)
-    if not mic.start(hw, config.audio.input_device or "Reachy Mini Audio"):
+    if not mic.start(hw, mic_hint):
         console.print("[red]Cannot start recording! Check mic.[/red]")
         return
 
@@ -147,40 +129,17 @@ def main():
                 continue
 
             console.print(f'  [green]You:[/green] "{text}"')
-
-            prompt = text
-            dt_rag = 0.0
-            if rag:
-                t_rag = time.perf_counter()
-                docs = rag.kb.search(text, n_results=rag.n_results)
-                relevant = [d for d in docs if d.get("distance", 2) < (2 - rag.min_relevance * 2)]
-                dt_rag = time.perf_counter() - t_rag
-                if relevant:
-                    for j, d in enumerate(relevant):
-                        score = 1 - d["distance"]
-                        snippet = d["content"][:80].replace("\n", " ")
-                        console.print(f"  [dim]  chunk{j+1} [{score:.2f}]: {snippet}...[/dim]")
-                    ctx = "\n\n".join(d["content"] for d in relevant)
-                    prompt = (
-                        "Answer using ONLY the facts below. Do not invent names or details."
-                        f"\n\n{ctx}\n\nQuestion: {text}"
-                    )
-                else:
-                    console.print("  [dim]  (no relevant chunks)[/dim]")
-
             console.print("  [magenta]Assistant:[/magenta] ", end="")
             sys.stdout.flush()
 
             full_resp, dt_llm, ttft = stream_and_speak(
-                llm, tts, prompt, active_system_prompt, mic.pa_sink,
+                llm, tts, text, config.llm.system_prompt, mic.pa_sink,
                 first_chunk_words=config.tts.first_chunk_words,
                 max_chunk_words=config.tts.max_chunk_words,
             )
             console.print()
 
             timing = f"  [dim]STT {dt_stt:.1f}s"
-            if rag:
-                timing += f" | RAG {dt_rag:.1f}s"
             if ttft is not None:
                 toks = len(full_resp.split())
                 timing += f" | TTFT {ttft:.1f}s | LLM {dt_llm:.1f}s ~{toks/(dt_llm or 1):.0f}w/s"

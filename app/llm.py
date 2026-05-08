@@ -17,7 +17,7 @@
 
 import httpx
 import json
-from typing import Optional, Iterator, Dict, Any
+from typing import Optional, Iterator
 
 
 class LLM:
@@ -80,45 +80,21 @@ class LLM:
         msgs.append({"role": "user", "content": prompt})
         return msgs
 
-    def _messages_multimodal(
-        self, prompt: str, images_b64: list[str],
-        system_prompt: Optional[str] = None,
-        few_shot: Optional[list[dict]] = None,
-    ) -> list:
-        msgs = []
-        sp = system_prompt or self.system_prompt
-        if sp:
-            msgs.append({"role": "system", "content": sp})
-        if few_shot:
-            msgs.extend(few_shot)
-        content: list[dict] = [{"type": "text", "text": prompt}]
-        for b64 in images_b64:
-            content.append({
-                "type": "image_url",
-                "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
-            })
-        msgs.append({"role": "user", "content": content})
-        return msgs
-
     def generate_stream(
         self,
         prompt: str,
         system_prompt: Optional[str] = None,
         max_tokens: Optional[int] = None,
         temperature: Optional[float] = None,
-        images_b64: Optional[list[str]] = None,
         few_shot: Optional[list[dict]] = None,
     ) -> Iterator[tuple]:
-        """Yields (content, metadata) tuples. Pass images_b64 for multimodal VLM requests."""
+        """Yields (content, metadata) tuples."""
         if not self._loaded:
             yield ("", {})
             return
         mt = max_tokens or self.max_tokens
         t = temperature if temperature is not None else self.temperature
-        if images_b64:
-            msgs = self._messages_multimodal(prompt, images_b64, system_prompt, few_shot)
-        else:
-            msgs = self._messages(prompt, system_prompt, few_shot)
+        msgs = self._messages(prompt, system_prompt, few_shot)
 
         if self.backend == "openai":
             yield from self._stream_openai(msgs, mt, t)
