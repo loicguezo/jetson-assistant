@@ -15,11 +15,6 @@ This project uses the following third-party open source software.
 | httpx | BSD-3-Clause | https://github.com/encode/httpx |
 | faster-whisper | MIT | https://github.com/SYSTRAN/faster-whisper |
 | kokoro-onnx | MIT | https://github.com/thewh1teagle/kokoro-onnx |
-| tokenizers | Apache-2.0 | https://github.com/huggingface/tokenizers |
-| opencv-python-headless | Apache-2.0 | https://github.com/opencv/opencv-python |
-| ChromaDB | Apache-2.0 | https://github.com/chroma-core/chroma |
-| FastAPI | MIT | https://github.com/fastapi/fastapi |
-| Uvicorn | BSD-3-Clause | https://github.com/encode/uvicorn |
 
 ## Separately Installed Dependencies
 
@@ -27,7 +22,7 @@ This project uses the following third-party open source software.
 |---------|---------|-----|
 | onnxruntime-gpu | MIT | https://github.com/microsoft/onnxruntime |
 | NumPy | BSD-3-Clause | https://github.com/numpy/numpy |
-| reachy-mini | Apache-2.0 | https://github.com/pollen-robotics/reachy_mini |
+| llama.cpp | MIT | https://github.com/ggml-org/llama.cpp |
 
 ## Key Transitive Dependencies
 
@@ -35,11 +30,6 @@ This project uses the following third-party open source software.
 |---------|---------|-----|
 | CTranslate2 | MIT | https://github.com/OpenNMT/CTranslate2 |
 | PyTorch | BSD-3-Clause | https://github.com/pytorch/pytorch |
-| torchaudio | BSD-3-Clause | https://github.com/pytorch/audio |
-| Transformers | Apache-2.0 | https://github.com/huggingface/transformers |
-| sentence-transformers | Apache-2.0 | https://github.com/UKPLab/sentence-transformers |
-| Starlette | BSD-3-Clause | https://github.com/encode/starlette |
-| Pydantic | MIT | https://github.com/pydantic/pydantic |
 | espeakng-loader | MIT | https://github.com/thewh1teagle/espeakng-loader |
 
 ## GPL-Licensed Transitive Dependencies (Subprocess-Isolated)
@@ -55,20 +45,9 @@ these packages. Communication between processes uses JSON over stdin/stdout pipe
 | phonemizer-fork | GPL-3.0 | https://github.com/thewh1teagle/phonemizer |
 | espeak-ng | GPL-3.0 | https://github.com/espeak-ng/espeak-ng |
 
-## External Services (Process-Isolated)
-
-The following run as separate Docker containers and communicate via HTTP API:
-
-| Software | License | URL |
-|----------|---------|-----|
-| llama.cpp | MIT | https://github.com/ggerganov/llama.cpp |
-
 ## Model Licenses
 
 | Model | License | URL |
 |-------|---------|-----|
-| Cosmos-Reason2-2B | Apache-2.0 | https://huggingface.co/nvidia/Cosmos-Reason2-2B |
 | faster-whisper (small.en) | MIT | https://huggingface.co/Systran/faster-whisper-small.en |
 | Kokoro v1.0 | Apache-2.0 | https://huggingface.co/hexgrad/Kokoro-82M |
-| DistilBERT SST-2 | Apache-2.0 | https://huggingface.co/distilbert/distilbert-base-uncased-finetuned-sst-2-english |
-| bge-small-en-v1.5 | MIT | https://huggingface.co/BAAI/bge-small-en-v1.5 |

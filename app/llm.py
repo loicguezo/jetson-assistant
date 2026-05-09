@@ -57,10 +57,15 @@ class LLM:
                     if r.status_code != 200:
                         return False
                     names = [m.get("name", "") for m in r.json().get("models", [])]
-                    base = self.model.split(":")[0]
-                    if base not in [n.split(":")[0] for n in names] and self.model not in names:
-                        print(f"Model '{self.model}' not found. Available: {', '.join(names)}")
+                    if not names:
                         return False
+                    if not self.model:
+                        self.model = names[0]
+                    else:
+                        base = self.model.split(":")[0]
+                        if base not in [n.split(":")[0] for n in names] and self.model not in names:
+                            print(f"Model '{self.model}' not found. Available: {', '.join(names)}")
+                            return False
             self._loaded = True
             return True
         except Exception as e:
@@ -109,7 +114,7 @@ class LLM:
                     "max_tokens": max_tokens, "temperature": temperature,
                 }) as r:
                     if r.status_code != 200:
-                        err = r.read().decode(errors="replace")[:300]
+                        err = r.read(512).decode(errors="replace")
                         print(f"\n  [LLM error {r.status_code}] {err}")
                         yield ("", {})
                         return

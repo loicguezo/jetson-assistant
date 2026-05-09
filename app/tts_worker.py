@@ -22,11 +22,16 @@
 # Log messages go to stderr so they appear in the parent's terminal.
 
 import sys
+import signal
 import json
 import base64
 import argparse
-import os
 from pathlib import Path
+
+# Ignore SIGINT — the parent process owns Ctrl+C. We shut down only when
+# the parent sends {"cmd": "shutdown"} or closes stdin (EOF).
+signal.signal(signal.SIGINT, signal.SIG_IGN)
+
 
 import numpy as np
 
@@ -57,14 +62,9 @@ def main():
         sys.exit(1)
 
     try:
-        import onnxruntime as ort
-
-        available = ort.get_available_providers()
-        if "CUDAExecutionProvider" in available:
-            os.environ["ONNX_PROVIDER"] = "CUDAExecutionProvider"
-        elif "TensorrtExecutionProvider" in available:
-            os.environ["ONNX_PROVIDER"] = "TensorrtExecutionProvider"
-
+        # On Jetson the standard ORT wheel only exposes CPUExecutionProvider
+        # (CUDAExecutionProvider is not built for ARM/Tegra in the PyPI wheel).
+        # Kokoro on CPU synthesises a sentence in ~3 s — fast enough for TTS.
         from kokoro_onnx import Kokoro
         kokoro = Kokoro(str(model_path), str(voices_path))
         provider = kokoro.sess.get_providers()[0]
@@ -102,7 +102,7 @@ def main():
                 samples, sample_rate = kokoro.create(
                     text, voice=voice, speed=speed, lang=lang,
                 )
-                audio_int16 = (samples * 32767).astype(np.int16)
+                audio_int16 = np.clip(samples * 32767, -32768, 32767).astype(np.int16)
                 audio_b64 = base64.b64encode(audio_int16.tobytes()).decode("ascii")
                 _respond({"audio_b64": audio_b64, "sample_rate": sample_rate})
             except Exception as e:

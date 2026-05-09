@@ -72,16 +72,20 @@ def save_wav(chunks: list[bytes], path: str):
 
 def warmup_stt(stt_obj) -> float:
     """Run a dummy transcription to warm up CUDA. Returns elapsed seconds."""
-    path = "/tmp/_warmup.wav"
-    with wave.open(path, "wb") as wf:
-        wf.setnchannels(1)
-        wf.setsampwidth(2)
-        wf.setframerate(SAMPLE_RATE)
-        wf.writeframes(np.zeros(SAMPLE_RATE // 2, dtype=np.int16).tobytes())
-    t0 = time.perf_counter()
-    stt_obj.transcribe(path, sample_rate=SAMPLE_RATE)
-    Path(path).unlink(missing_ok=True)
-    return time.perf_counter() - t0
+    import tempfile
+    with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
+        path = tmp.name
+    try:
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(SAMPLE_RATE)
+            wf.writeframes(np.zeros(SAMPLE_RATE // 2, dtype=np.int16).tobytes())
+        t0 = time.perf_counter()
+        stt_obj.transcribe(path, sample_rate=SAMPLE_RATE)
+        return time.perf_counter() - t0
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 def _pa_match(needle: str, haystack: str) -> bool:
@@ -130,8 +134,10 @@ def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
             cmd = ["aplay", "-f", "S16_LE", "-r", str(sample_rate),
                    "-c", "1", "-t", "raw", "-q"]
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        p.stdin.write(raw)
-        p.stdin.close()
+        try:
+            p.stdin.write(raw)
+        finally:
+            p.stdin.close()
         p.wait(timeout=30)
     except Exception:
         pass
@@ -234,8 +240,6 @@ class MicRecorder:
                        f"--rate={SAMPLE_RATE}", f"--channels={CHANNELS}", "--raw"]
         else:
             self.console.print("  [yellow]PA source not found, using ALSA direct[/yellow]")
-            kill_pulseaudio()
-            time.sleep(0.5)
             plughw = hw.replace("hw:", "plughw:")
             rec_cmd = ["arecord", "-D", plughw, "-f", "S16_LE", "-r", str(SAMPLE_RATE),
                        "-c", str(CHANNELS), "-t", "raw"]
@@ -247,7 +251,16 @@ class MicRecorder:
                 break
             err = self._proc.stderr.read().decode(errors="replace").strip()
             self.console.print(f"  [red]Mic attempt {attempt+1} failed: {err}[/red]")
-            time.sleep(1)
+            # If ALSA says device is busy, release PulseAudio and retry once.
+            # Only do this as a last resort — killing PA disconnects BT audio.
+            if attempt == 0 and self.pa_source is None and (
+                "busy" in err.lower() or "device or resource busy" in err.lower()
+            ):
+                self.console.print("  [dim]ALSA device busy — releasing PulseAudio...[/dim]")
+                kill_pulseaudio()
+                time.sleep(0.5)
+            else:
+                time.sleep(1)
 
         if self._proc is None or self._proc.poll() is not None:
             return False
@@ -269,7 +282,8 @@ class MicRecorder:
                 self.console.print("  Mic: [red]✗ silent — unmute![/red]")
         else:
             self.console.print(
-                f"  [red]Mic: no audio data! arecord running: {self._proc.poll() is None}[/red]"
+                f"  [red]Mic: no audio data (arecord running: {self._proc.poll() is None})[/red]\n"
+                "  [dim]Check 'arecord -l' and set audio.input_device in config/settings.yaml[/dim]"
             )
 
         return True
@@ -307,7 +321,11 @@ class MicRecorder:
         self.alive = False
         if self._proc:
             self._proc.terminate()
-            self._proc.wait(timeout=2)
+            try:
+                self._proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                self._proc.kill()
+                self._proc.wait()
 
 
 # ── VAD loop ──────────────────────────────────────────────────────
@@ -475,6 +493,8 @@ def stream_and_speak(
         if tts_buf.strip():
             tts_q.put(tts_buf.strip())
         tts_q.put(None)
-        tts_thread.join()
+        tts_thread.join(timeout=60)
+        if tts_thread.is_alive():
+            sys.stderr.write("  [warn] TTS thread did not finish in 60s\n")
 
     return full_resp, dt_llm, ttft

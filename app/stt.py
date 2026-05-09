@@ -57,6 +57,8 @@ class STT:
             return {"text": "", "error": "Model not loaded"}
         try:
             if isinstance(audio, np.ndarray):
+                if audio.size == 0:
+                    return {"text": "", "error": "Empty audio"}
                 if audio.ndim > 1:
                     audio = audio.mean(axis=1)
                 audio = audio.flatten().astype(np.float32)

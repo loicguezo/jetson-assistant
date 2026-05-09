@@ -1,0 +1,34 @@
+#!/usr/bin/env bash
+# Wrapper — uses venv if available, falls back to system python.
+# Bootstraps typer+rich if needed so `setup` can run before the venv exists.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV_PYTHON="$SCRIPT_DIR/venv/bin/python3"
+
+# Add library search paths so CTranslate2's CUDA shared library is found.
+# The Python extension in the venv has RUNPATH=/usr/local/lib but the library
+# lives alongside it in the package directory — add both that dir and ~/.local/lib.
+CT2_PKG="$SCRIPT_DIR/venv/lib/python3.10/site-packages/ctranslate2"
+if [ -d "$CT2_PKG" ]; then
+    export LD_LIBRARY_PATH="$CT2_PKG${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+if [ -d "$HOME/.local/lib" ]; then
+    export LD_LIBRARY_PATH="$HOME/.local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
+
+if [ -f "$VENV_PYTHON" ]; then
+    exec "$VENV_PYTHON" "$SCRIPT_DIR/manage.py" "$@"
+fi
+
+PYTHON="$(which python3.10 2>/dev/null || which python3 2>/dev/null)"
+if [ -z "$PYTHON" ]; then
+    echo "Error: python3.10 or python3 not found in PATH" >&2
+    exit 1
+fi
+
+# Ensure typer and rich are available for the CLI to start
+if ! "$PYTHON" -c "import typer, rich" 2>/dev/null; then
+    echo "[bootstrap] Installing typer and rich for the setup CLI..." >&2
+    "$PYTHON" -m pip install --quiet typer rich
+fi
+
+exec "$PYTHON" "$SCRIPT_DIR/manage.py" "$@"

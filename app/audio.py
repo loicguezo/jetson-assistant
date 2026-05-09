@@ -22,11 +22,11 @@ from typing import Optional
 
 
 def kill_pulseaudio() -> bool:
-    """Kill PulseAudio and prevent respawning (ALSA fallback only)."""
-    pa_conf = Path.home() / ".config" / "pulse" / "client.conf"
-    pa_conf.parent.mkdir(parents=True, exist_ok=True)
-    if not pa_conf.exists() or "autospawn = no" not in pa_conf.read_text():
-        pa_conf.write_text("autospawn = no\n")
+    """Kill PulseAudio so ALSA can claim an exclusive device.
+
+    Does NOT write autospawn=no — PulseAudio will restart on next login/session,
+    which is the right behaviour (e.g. for Bluetooth audio on next boot).
+    """
     subprocess.run(["pulseaudio", "--kill"], capture_output=True)
     subprocess.run(["pkill", "-9", "pulseaudio"], capture_output=True)
     time.sleep(0.5)

@@ -1,4 +1,4 @@
-# Contributing to Reachy Mini Jetson Assistant
+# Contributing to Jetson Voice Assistant
 
 We welcome contributions from the community. To get started, please follow the guidelines below.
 

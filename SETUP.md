@@ -82,22 +82,28 @@ Verify the build:
 
 ### Download a Model
 
-Install the HuggingFace CLI to download GGUF models:
+Model downloads require a free [HuggingFace](https://huggingface.co) account. Create one, then log in:
 
 ```bash
-pip install huggingface_hub
-huggingface-cli download bartowski/gemma-3-4b-it-GGUF \
-  --include "gemma-3-4b-it-Q4_K_M.gguf" \
+hf auth login
+# Paste your token from https://huggingface.co/settings/tokens (read access is enough)
+```
+
+Download the recommended model:
+
+```bash
+hf download unsloth/gemma-4-E4B-it-GGUF \
+  --include "gemma-4-E4B-it-Q4_K_M.gguf" \
   --local-dir ~/models
 ```
 
-**Recommended models for Orin Nano 8GB:**
+**Recommended model for Orin Nano 8GB:**
 
-| Model | Size on disk | Quality |
-|-------|-------------|---------|
-| `gemma-3-4b-it-Q4_K_M` | ~2.7 GB | Good balance |
-| `gemma-3-1b-it-Q8_0` | ~1.3 GB | Fast, lower quality |
-| `Qwen3-4B-Q4_K_M` | ~2.6 GB | Good reasoning |
+| Model | File | Size |
+|-------|------|------|
+| Gemma 4 E4B (unsloth) | `gemma-4-E4B-it-Q4_K_M.gguf` | ~4.6 GB |
+
+Any `.gguf` file placed in `~/models/` is detected automatically by `./jetson-assistant start`.
 
 ### Start the LLM Server
 

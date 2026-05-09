@@ -74,6 +74,8 @@ def _download_kokoro_models_if_missing() -> bool:
             print(f"  Saved {path}")
         except Exception as e:
             print(f"  Download failed: {e}")
+            if path.exists():
+                path.unlink()   # remove partial file so next run retries
             return False
     return True
 
@@ -107,7 +109,7 @@ class KokoroTTS:
                  "--lang", self.lang],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
-                stderr=None,  # inherit parent's stderr for log visibility
+                stderr=subprocess.PIPE,  # filtered below — see _stderr_filter thread
                 text=True,
                 bufsize=1,
             )
@@ -115,6 +117,34 @@ class KokoroTTS:
             print(f"TTS worker spawn failed: {e}")
             return False
 
+        # Forward worker stderr, suppressing a harmless ORT startup warning:
+        # ORT probes /sys/class/drm/card0/device/vendor (PCI GPU enumeration);
+        # on Jetson that file doesn't exist (SoC GPU, nvgpu driver, not PCIe),
+        # so ORT logs "GPU device discovery failed" and falls back to CPU —
+        # which is correct, Kokoro on CPU is fast enough for TTS.
+        import threading
+        _SUPPRESS = [
+            "DiscoverDevicesForPlatform",
+            "device_discovery.cc",
+            "GPU device discovery failed",
+        ]
+
+        stderr_pipe = self._proc.stderr
+
+        def _stderr_filter():
+            for line in stderr_pipe:
+                if not any(s in line for s in _SUPPRESS):
+                    sys.stderr.write(line)
+
+        threading.Thread(target=_stderr_filter, daemon=True).start()
+
+        import select
+        ready = select.select([self._proc.stdout], [], [], 30.0)[0]
+        if not ready:
+            print("TTS worker startup timed out")
+            self._proc.kill()
+            self._proc.wait()
+            return False
         line = self._proc.stdout.readline()
         if not line:
             print("TTS worker exited before signalling ready")
@@ -189,6 +219,7 @@ class KokoroTTS:
                 self._proc.wait(timeout=5)
             except Exception:
                 self._proc.kill()
+                self._proc.wait()
             self._proc = None
 
 
