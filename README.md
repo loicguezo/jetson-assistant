@@ -22,17 +22,19 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 |-----------|---------|:---:|
 | **LLM** | llama.cpp (native, no Docker) | GPU (CUDA) |
 | **STT** | faster-whisper | GPU (CUDA) |
-| **TTS** | Kokoro ONNX | GPU (CUDA) |
+| **TTS** | Kokoro ONNX | CPU |
 | **VAD** | Silero VAD | CPU |
 
 llama.cpp is compiled directly on the Jetson — no Docker, no Python wrapper overhead. This keeps the memory footprint as small as possible on the shared 8 GB unified memory.
+
+Kokoro TTS runs in a **separate subprocess** to isolate its GPL-licensed dependencies (phonemizer, espeak-ng) from the CUDA process. On Jetson, the standard ONNX Runtime wheel does not include CUDA support for the TTS model, so synthesis runs on CPU (~3.7 s for a 3.6 s sentence).
 
 **Default model:** [Gemma 4 E4B Q4_K_M](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) (~4.6 GB) — Google's Gemma 4 Efficient 4B, quantized by unsloth. Any GGUF model placed in `~/models/` is picked up automatically by `./jetson-assistant start`.
 
 ## Prerequisites
 
 - **NVIDIA Jetson Orin Nano** (8GB) with JetPack 6.x, Python 3.10
-- **USB microphone** and **speaker** (or USB audio device)
+- **USB microphone** and **speaker** (or Bluetooth audio device)
 - **NVMe SSD** recommended for swap and model storage
 - **HuggingFace account** — required to download models (`hf auth login`)
 
@@ -47,14 +49,17 @@ See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, b
 ./jetson-assistant start            # model picker → llama-server → voice chat
 ./jetson-assistant stop             # stop everything
 ./jetson-assistant status           # show what's running + memory usage
-./jetson-assistant optimize         # apply memory optimizations (reversible)
+./jetson-assistant optimize         # apply memory optimizations (reversible, asks per item)
+./jetson-assistant optimize --all       # apply all without prompting
 ./jetson-assistant optimize --restore   # undo optimizations
 ./jetson-assistant optimize --status    # show what is applied
-./jetson-assistant test --llm       # test individual components
-./jetson-assistant test --stt
-./jetson-assistant test --tts
-./jetson-assistant test --vad
-./jetson-assistant test --all
+./jetson-assistant test --llm       # test LLM (auto-starts llama-server)
+./jetson-assistant test --stt       # test speech-to-text (records 3 seconds)
+./jetson-assistant test --tts       # test text-to-speech (plays a sentence)
+./jetson-assistant test --vad       # test VAD (shows mic activity for 5 seconds)
+./jetson-assistant test --mic       # test microphone (lists devices, records 3s, plays back)
+./jetson-assistant test --all       # run all component tests
+./jetson-assistant benchmark        # TTS → STT → LLM chain with fixed inputs, reports timing
 ```
 
 Add the project directory to `PATH` to use `jetson-assistant` from anywhere:
@@ -70,12 +75,16 @@ All settings live in `config/settings.yaml`:
 | Section | What It Controls |
 |---------|-----------------|
 | `llm` | Server URL, model, temperature, max tokens, system prompt |
-| `stt` | Whisper model size, CUDA device, beam size |
-| `tts` | Voice, speed, language, chunking |
+| `stt` | Whisper model size, CUDA device, beam size, language |
+| `tts` | Voice, speed, language code, chunking |
 | `audio` | Sample rate, input device name hint |
 | `vad` | Silero threshold, silence duration, utterance filters |
 
-**Selecting your microphone:** by default the assistant searches for a device matching `"USB Audio"`. Set `audio.input_device` in `settings.yaml` to a substring of your device name (check `arecord -l`), or leave it `null` to auto-detect the first available input.
+**Selecting your microphone:** set `audio.input_device` in `settings.yaml` to a substring of your device name (check `arecord -l` or run `./jetson-assistant test --mic`), or leave it `null` to auto-detect.
+
+**Language:** set `stt.language` (e.g. `"de"`, `"fr"`) and use a matching Kokoro voice + `tts.lang` code (e.g. `"de"`, `"fr-fr"`). Switch the STT model from `small.en` to `small` for multilingual transcription.
+
+**Bluetooth speaker:** use `scripts/connect-bt-speaker.sh` to pair and set a Bluetooth speaker as the default PulseAudio sink.
 
 ## Project Structure
 
@@ -91,10 +100,14 @@ jetson-assistant/
 │   ├── manager.py        # llama-server lifecycle, PID files, GGUF discovery
 │   ├── optimize.py       # System optimizations with state persistence
 │   ├── setup_wizard.py   # First-time setup logic (build, download, venv)
+│   ├── benchmark.py      # Full-pipeline benchmark (TTS → STT → LLM)
+│   ├── test_components.py # Component tests (LLM, STT, TTS, VAD, mic)
 │   ├── monitor.py        # CPU/GPU/RAM stats
 │   └── audio.py          # PulseAudio / ALSA device helpers
 ├── config/
 │   └── settings.yaml     # All runtime configuration
+├── scripts/
+│   └── connect-bt-speaker.sh  # Bluetooth speaker setup helper
 ├── voices/               # TTS voice files (gitignored)
 ├── manage.py             # ./jetson-assistant CLI entry point
 └── run_voice_chat.py     # Voice pipeline entry point
@@ -115,13 +128,16 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 ## Roadmap
 
 - [x] Orin Nano 8GB — full pipeline validated
-- [x] Kokoro TTS GPU acceleration
 - [x] Silero VAD for robust speech detection
 - [x] Native llama.cpp (no Docker overhead)
-- [ ] Wake word detection (hands-free activation)
+- [x] Management CLI (`setup`, `start`, `stop`, `status`, `optimize`, `test`, `benchmark`)
+- [x] Memory optimizations (`optimize` command — reversible, per-item dialog)
+- [x] Bluetooth speaker support (`scripts/connect-bt-speaker.sh`)
+- [x] Language configurable via `settings.yaml` (`stt.language`, `tts.lang` + voice)
+- [ ] TTS GPU acceleration (Kokoro currently CPU-only on Jetson's ORT build)
+- [ ] Auto-start as systemd service (boot without manual `./jetson-assistant start`)
 - [ ] Multi-turn conversation memory
-- [ ] Multi-language support
-- [ ] Auto-start llama-server as systemd service
+- [ ] Wake word detection (hands-free activation)
 
 ## Further Reading
 
