@@ -245,7 +245,13 @@ class MicRecorder:
                        "-c", str(CHANNELS), "-t", "raw"]
 
         for attempt in range(3):
-            self._proc = subprocess.Popen(rec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            self._proc = subprocess.Popen(
+                rec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                # Own process group so Ctrl+C (SIGINT) from the terminal
+                # does not reach the recorder — we shut it down explicitly
+                # via stop(), which sends SIGTERM then SIGKILL if needed.
+                start_new_session=True,
+            )
             time.sleep(0.5)
             if self._proc.poll() is None:
                 break
@@ -292,7 +298,9 @@ class MicRecorder:
         while self.alive:
             raw = self._proc.stdout.read(self.chunk_bytes)
             if not raw:
-                if self._proc.poll() is not None:
+                # Only report unexpected deaths — if self.alive is False we
+                # called stop() intentionally and the process exit is expected.
+                if self._proc.poll() is not None and self.alive:
                     err = self._proc.stderr.read().decode(errors="replace").strip()
                     if err:
                         self.console.print(f"\n  [red]arecord died: {err}[/red]")
