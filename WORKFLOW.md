@@ -82,6 +82,15 @@ The flags must include `-np 1` and `--reasoning off`. If they don't, the server 
 | TTS stuck on CPU despite onnxruntime-gpu | Both `onnxruntime` (PyPI) AND `onnxruntime-gpu` (Jetson AI Lab) installed — CPU wheel wins | `pip uninstall -y onnxruntime onnxruntime-gpu` then reinstall only `onnxruntime-gpu` with `--force-reinstall numpy==1.26.4` |
 | No audio on BT speaker | `aplay` bypasses PulseAudio | Switched to `paplay` in `app/pipeline.py` |
 
+## Context & memory settings (measured)
+
+| Setting | Value | Notes |
+|---------|-------|-------|
+| `-c` (ctx) | 8192 | ~100 MB more RAM than 4096; Gemma 4 supports 128k |
+| `memory_turns` | 20 | benchmarked: TTFT 0.87s at 20 turns (2.2× baseline), 0.7 GB free |
+| `max_tokens` | 512 | response budget; counts toward ctx |
+| Realistic tokens/turn | ~100 | 50w user + 30w assistant × 1.3; 20 turns ≈ 2000 tokens |
+
 ## Active model
 
 Gemma 4 4B-IT Q4_K_M (`gemma-4-E4B-it-Q4_K_M.gguf`, ~5 GB).

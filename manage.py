@@ -395,7 +395,7 @@ def _model_download_dialog():
 def start(
     model: str = typer.Option(None, "--model", "-m", help="Path to GGUF model file"),
     port: int = typer.Option(8080, "--port", help="llama-server port"),
-    ctx: int = typer.Option(4096, "--ctx", help="Context window size"),
+    ctx: int = typer.Option(8192, "--ctx", help="Context window size"),
     keep_server: bool = typer.Option(False, "--keep-server", "-k",
                                      help="Keep llama-server running after voice chat exits"),
     server_only: bool = typer.Option(False, "--server-only",

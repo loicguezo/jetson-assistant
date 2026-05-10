@@ -110,7 +110,7 @@ def wait_for_llama_server(timeout: int = 120) -> bool:
     return False
 
 
-def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 4096) -> Optional[int]:
+def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 8192) -> Optional[int]:
     llama = find_llama_server()
     if not llama:
         return None
