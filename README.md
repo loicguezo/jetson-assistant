@@ -138,7 +138,6 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 - [x] Multi-turn conversation memory (rolling window, persistent across sessions)
 - [ ] Auto-start as systemd service (boot without manual `./jetson-assistant start`)
 - [ ] Wake word detection (hands-free activation)
-- [ ] Wake word detection (hands-free activation)
 
 ## Further Reading
 
