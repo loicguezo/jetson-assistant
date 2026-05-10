@@ -160,6 +160,34 @@ def test_local_config_corrupt_falls_back_to_base(tmp_path):
     assert cfg.tts.backend == "kokoro"
 
 
+# ── _multilingual_stt_model ───────────────────────────────────────
+
+
+def test_multilingual_stt_model_suggests_for_non_english():
+    from manage import _multilingual_stt_model
+
+    assert _multilingual_stt_model("de", "base.en") == "base"
+    assert _multilingual_stt_model("fr", "small.en") == "small"
+    assert _multilingual_stt_model("es", "tiny.en") == "tiny"
+    assert _multilingual_stt_model("ja", "medium.en") == "medium"
+
+
+def test_multilingual_stt_model_no_change_for_english():
+    from manage import _multilingual_stt_model
+
+    assert _multilingual_stt_model("en", "base.en") is None
+
+
+def test_multilingual_stt_model_no_change_when_already_multilingual():
+    from manage import _multilingual_stt_model
+
+    assert _multilingual_stt_model("de", "small") is None
+    assert _multilingual_stt_model("de", "base") is None
+
+
+# ── local_config_deleted_after_load ───────────────────────────────
+
+
 def test_local_config_deleted_after_load(tmp_path):
     base = tmp_path / "settings.yaml"
     base.write_text("tts:\n  backend: kokoro\n")
