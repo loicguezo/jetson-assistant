@@ -29,7 +29,7 @@ tts:
   speed: 1.0
   lang: "en-us"                       # kokoro language code
   first_chunk_words: 3                # words before first TTS chunk is sent
-  max_chunk_words: 10                 # Kokoro CUDA RTF ~0.14x — small chunks are fine
+  max_chunk_words: 5                  # must be ≤ 2×first_chunk_words for gap-free audio (LLM ~5 w/s, speech ~2.5 w/s)
 
 audio:
   sample_rate: 16000

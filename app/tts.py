@@ -127,6 +127,15 @@ class KokoroTTS:
             "DiscoverDevicesForPlatform",
             "device_discovery.cc",
             "GPU device discovery failed",
+            # ORT graph-compilation notes: Memcpy nodes inserted for CPU↔GPU
+            # data movement, shape ops kept on CPU intentionally, ScatterND
+            # index-uniqueness caveat from the Kokoro model itself — all harmless.
+            "Memcpy nodes are added",
+            "VerifyEachNodeIsAssignedToAnEp",
+            "ScatterNDWithAtomicReduction",
+            "transformer_memcpy.cc",
+            "session_state.cc",
+            "scatter_nd.h",
         ]
 
         stderr_pipe = self._proc.stderr

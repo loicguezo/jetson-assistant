@@ -47,6 +47,12 @@ Tests require llama-server to be running for integration tests; they auto-skip i
 - Run the tests and confirm they pass before `git push`
 - Name the file `tests/test_<module>.py`, keep tests focused and fast (< 5s each)
 
+**Research rule:** Before concluding something is impossible or not supported on Jetson,
+do a quick web search (NVIDIA forum, Jetson AI Lab docs, PyPI index). Past example: we
+concluded "Kokoro TTS can't use CUDA on Jetson" based on ORT error messages — a search
+revealed the real cause was two conflicting onnxruntime packages installed simultaneously.
+The fix was a 2-line reinstall. When evidence contradicts expectations, search first.
+
 ## llama-server lifecycle
 
 ```bash

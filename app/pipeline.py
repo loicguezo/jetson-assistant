@@ -162,14 +162,68 @@ def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
 
 
 def tts_player(tts_obj, tts_q: queue.Queue, sink: Optional[str] = None):
-    """Background thread target: synthesize + play each sentence as it arrives."""
+    """Synthesize and play TTS chunks with synthesis overlapping playback.
+
+    A synthesis thread pre-fetches the next chunk while the current one plays.
+    All chunks are piped to a single paplay process to avoid per-chunk startup
+    latency (~100 ms) and produce gapless audio.
+    """
+    audio_q: queue.Queue = queue.Queue()
+
+    def _synthesize():
+        while True:
+            text = tts_q.get()
+            if text is None:
+                audio_q.put(None)
+                return
+            r = tts_obj.synthesize(text)
+            audio_q.put(r)
+
+    threading.Thread(target=_synthesize, daemon=True).start()
+
+    proc: Optional[subprocess.Popen] = None
+    use_aplay = False
+
     while True:
-        text = tts_q.get()
-        if text is None:
-            return
-        r = tts_obj.synthesize(text)
-        if r.get("audio") is not None:
-            play_audio(r["audio"], r["sample_rate"], sink=sink)
+        r = audio_q.get()
+        if r is None:
+            break
+        if r.get("audio") is None:
+            continue
+
+        audio_bytes = r["audio"].astype(np.int16).tobytes()
+        sr = r["sample_rate"]
+
+        if proc is None:
+            pa_args = ["--format=s16le", f"--rate={sr}", "--channels=1", "--raw"]
+            cmd = (["paplay", f"--device={sink}"] if sink else ["paplay"]) + pa_args
+            try:
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                        stderr=subprocess.DEVNULL)
+            except FileNotFoundError:
+                use_aplay = True
+                cmd = ["aplay", "-f", "S16_LE", "-r", str(sr), "-c", "1",
+                       "-t", "raw", "-q"]
+                try:
+                    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
+                                            stderr=subprocess.DEVNULL)
+                except FileNotFoundError:
+                    continue
+
+        try:
+            proc.stdin.write(audio_bytes)
+        except (BrokenPipeError, OSError):
+            proc = None
+
+    if proc is not None:
+        try:
+            proc.stdin.close()
+            proc.wait(timeout=30)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
 
 
 # ── Silero VAD ────────────────────────────────────────────────────
