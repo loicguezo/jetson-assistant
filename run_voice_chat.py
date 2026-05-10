@@ -30,6 +30,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from app.config import Config
 from app.audio import find_alsa_device
+from app.history import load_history, save_history, clear_history
 from app.stt import STT
 from app.pipeline import (
     SAMPLE_RATE, MicRecorder, warmup_stt, vad_loop, stream_and_speak, load_silero,
@@ -103,6 +104,12 @@ def main():
             from app.pipeline import play_audio
             play_audio(r["audio"], r["sample_rate"], sink=mic.pa_sink)
 
+    max_history = config.llm.memory_turns * 2  # user + assistant per turn
+    history: list[dict] = load_history()[-max_history:] if max_history > 0 else []
+    if history:
+        console.print(f"[dim]  Loaded {len(history) // 2} turn(s) from history.[/dim]")
+    _FORGET_WORDS = {"forget", "clear", "reset", "history"}
+
     # ── Main loop ────────────────────────────────────────────────
     try:
         for segment in vad_loop(mic, console, vad_cfg=config.vad, silero=silero_model):
@@ -121,11 +128,24 @@ def main():
                 continue
 
             console.print(f'  [green]You:[/green] "{text}"')
+
+            # "forget everything" / "clear history" clears the rolling window
+            words = set(text.lower().split())
+            if len(words) <= 4 and words & _FORGET_WORDS:
+                history.clear()
+                clear_history()
+                console.print("  [dim]History cleared.[/dim]")
+                mic.resume()
+                continue
+
+            few_shot = history[-max_history:] if max_history > 0 else None
+
             console.print("  [magenta]Assistant:[/magenta] ", end="")
             sys.stdout.flush()
 
             full_resp, dt_llm, ttft = stream_and_speak(
                 llm, tts, text, config.llm.system_prompt, mic.pa_sink,
+                few_shot=few_shot,
                 first_chunk_words=config.tts.first_chunk_words,
                 max_chunk_words=config.tts.max_chunk_words,
             )
@@ -133,6 +153,11 @@ def main():
 
             console.print(f"  [dim]STT {dt_stt:.1f}s | ", end="")
             print_response_timing(console, full_resp, dt_llm, ttft, prefix="")
+
+            if full_resp and max_history > 0:
+                history.append({"role": "user", "content": text})
+                history.append({"role": "assistant", "content": full_resp})
+                save_history(history[-max_history:])
 
             mic.resume()
 

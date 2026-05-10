@@ -65,3 +65,6 @@ temp/
 .coverage
 coverage.xml
 htmlcov/
+
+# Conversation history (persisted locally, not shared)
+history.json

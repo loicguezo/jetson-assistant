@@ -29,6 +29,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from app.config import Config
 from app.pipeline import stream_and_speak, load_llm, load_tts, print_response_timing
+from app.history import load_history, save_history, clear_history
 from app.monitor import get_system_stats, format_stats
 from rich.console import Console
 from rich.prompt import Prompt
@@ -60,6 +61,11 @@ def main():
             from app.pipeline import play_audio
             play_audio(r["audio"], r["sample_rate"])
 
+    max_history = config.llm.memory_turns * 2  # user + assistant per turn
+    history: list[dict] = load_history()[-max_history:] if max_history > 0 else []
+    if history:
+        console.print(f"[dim]  Loaded {len(history) // 2} turn(s) from history.[/dim]")
+
     try:
         while True:
             try:
@@ -71,6 +77,13 @@ def main():
                 if text.strip().lower() == "stats":
                     console.print(f"  {format_stats(get_system_stats())}")
                     continue
+                if text.strip().lower() in ("forget", "forget everything", "clear history"):
+                    history.clear()
+                    clear_history()
+                    console.print("[dim]  History cleared.[/dim]")
+                    continue
+
+                few_shot = history[-max_history:] if max_history > 0 else None
 
                 console.print("[magenta]Assistant[/magenta]: ", end="")
                 sys.stdout.flush()
@@ -78,11 +91,17 @@ def main():
                 full_resp, dt_llm, ttft = stream_and_speak(
                     llm, tts, text, config.llm.system_prompt,
                     pa_sink=None,
+                    few_shot=few_shot,
                     first_chunk_words=config.tts.first_chunk_words,
                     max_chunk_words=config.tts.max_chunk_words,
                 )
                 console.print()
                 print_response_timing(console, full_resp, dt_llm, ttft)
+
+                if full_resp and max_history > 0:
+                    history.append({"role": "user", "content": text})
+                    history.append({"role": "assistant", "content": full_resp})
+                    save_history(history[-max_history:])
 
             except KeyboardInterrupt:
                 console.print("\n[yellow]Interrupted[/yellow]")

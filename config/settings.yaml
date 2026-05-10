@@ -7,6 +7,7 @@ llm:
   max_tokens: 512
   temperature: 0.7
   timeout: 120.0
+  memory_turns: 5             # past turns sent as context (0 = disabled, max ~10 before hitting ctx limit)
   system_prompt: |
     You are a helpful voice assistant running on an NVIDIA Jetson.
     Your responses will be spoken aloud via text-to-speech.

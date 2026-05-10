@@ -462,6 +462,13 @@ def start(
     else:
         _launch_server(model_path, port, ctx)
 
+    # ── Conversation history ───────────────────────────────────
+    from app.history import has_history, clear_history
+    if has_history():
+        if confirm_with_countdown("Clear conversation history?", default=False):
+            clear_history()
+            console.print("  [dim]History cleared.[/dim]")
+
     # ── Start chat ────────────────────────────────────────────
     if server_only:
         console.print("\n  [green]llama-server is running.[/green]  "
@@ -825,6 +832,33 @@ def benchmark():
         wait_fn=wait_for_llama_server,
         find_models_fn=find_gguf_models,
     )
+
+
+@app.command()
+def history(
+    clear: bool = typer.Option(False, "--clear", "-c", help="Clear conversation history"),
+):
+    """Show or clear conversation history."""
+    from app.history import HISTORY_FILE, clear_history, load_history, has_history
+
+    if clear:
+        clear_history()
+        console.print("[green]Conversation history cleared.[/green]")
+        return
+
+    if not has_history():
+        console.print("[dim]No conversation history.[/dim]")
+        return
+
+    turns = load_history()
+    n = len(turns) // 2
+    size = HISTORY_FILE.stat().st_size
+    console.print(f"  [bold]{n} turn(s)[/bold] stored in [dim]{HISTORY_FILE}[/dim] ({size} bytes)")
+    for i in range(0, len(turns), 2):
+        user = turns[i].get("content", "")
+        asst = turns[i + 1].get("content", "") if i + 1 < len(turns) else ""
+        console.print(f"  [dim]{i//2 + 1}.[/dim] [green]You:[/green] {user[:80]}")
+        console.print(f"     [magenta]Asst:[/magenta] {asst[:80]}")
 
 
 if __name__ == "__main__":

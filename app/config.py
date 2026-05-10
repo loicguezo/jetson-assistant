@@ -31,6 +31,7 @@ class LLMConfig:
     temperature: float = 0.7
     timeout: float = 120.0
     system_prompt: str = "You are a helpful AI assistant."
+    memory_turns: int = 5  # number of past turns to include as context (0 = disabled)
 
 
 @dataclass
