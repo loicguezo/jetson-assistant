@@ -54,6 +54,12 @@ def main():
     tts = load_tts(config, console)
     console.print("\n[green bold]Ready![/green bold]\n")
 
+    if tts:
+        r = tts.synthesize("Ready.")
+        if r.get("audio") is not None:
+            from app.pipeline import play_audio
+            play_audio(r["audio"], r["sample_rate"])
+
     try:
         while True:
             try:

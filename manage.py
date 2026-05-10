@@ -13,7 +13,10 @@ Commands:
 
 import os
 import sys
+import select
 import subprocess
+import termios
+import tty
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -49,6 +52,63 @@ app = typer.Typer(
     add_completion=False,
     pretty_exceptions_enable=False,
 )
+
+
+# ── Countdown prompt ───────────────────────────────────────────────
+
+def _countdown_wait(text: str, default_label: str, timeout: int = 5) -> bool:
+    """Show a countdown line. Returns True if the user pressed a key before
+    timeout, False if the timer expired (→ caller should use the default)."""
+    if not sys.stdin.isatty():
+        return False
+
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    try:
+        tty.setcbreak(fd)
+        for remaining in range(timeout, 0, -1):
+            sys.stdout.write(
+                f"\r  {text} [{default_label}]  —  auto in {remaining}s  "
+                "(press any key to choose manually): "
+            )
+            sys.stdout.flush()
+            ready, _, _ = select.select([sys.stdin], [], [], 1.0)
+            if ready:
+                sys.stdin.read(1)  # discard the keypress
+                return True
+        sys.stdout.write(f"\r  Auto-selected: {default_label}" + " " * 50 + "\n")
+        sys.stdout.flush()
+        return False
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+
+
+def prompt_with_countdown(
+    text: str,
+    choices: list[str],
+    default: str,
+    timeout: int = 5,
+) -> str:
+    """Prompt with countdown. Auto-selects *default* after *timeout* seconds."""
+    if _countdown_wait(text, default, timeout):
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
+        return Prompt.ask(text, choices=choices, default=default)
+    return default
+
+
+def confirm_with_countdown(
+    text: str,
+    default: bool = False,
+    timeout: int = 5,
+) -> bool:
+    """Yes/no confirm with countdown. Auto-selects *default* after *timeout* seconds."""
+    default_label = "y" if default else "n"
+    if _countdown_wait(text, default_label, timeout):
+        sys.stdout.write("\r" + " " * 80 + "\r")
+        sys.stdout.flush()
+        return Confirm.ask(text, default=default)
+    return default
 
 
 # ── setup ─────────────────────────────────────────────────────────
@@ -376,11 +436,8 @@ def start(
             console.print(f"      [dim]{m.parent}[/dim]")
 
         console.print()
-        choice = Prompt.ask(
-            "Select model",
-            choices=[str(i) for i in range(1, len(models) + 1)],
-            default="1",
-        )
+        choices = [str(i) for i in range(1, len(models) + 1)]
+        choice = prompt_with_countdown("Select model", choices, default="1")
         model_path = models[int(choice) - 1]
 
     if not model_path.exists():
@@ -395,7 +452,7 @@ def start(
         running_model = get_llama_model_name()
         console.print(f"\n[yellow]llama-server already running[/yellow]"
                       + (f" ({running_model})" if running_model else ""))
-        if not Confirm.ask("Stop it and start fresh?", default=False):
+        if not confirm_with_countdown("Stop it and start fresh?", default=False):
             console.print("  Using existing server.")
         else:
             console.print("  Stopping existing server...", end=" ")

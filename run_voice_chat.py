@@ -97,6 +97,12 @@ def main():
 
     console.print("\n[green bold]Ready — speak anytime![/green bold]\n")
 
+    if tts:
+        r = tts.synthesize("Ready.")
+        if r.get("audio") is not None:
+            from app.pipeline import play_audio
+            play_audio(r["audio"], r["sample_rate"], sink=mic.pa_sink)
+
     # ── Main loop ────────────────────────────────────────────────
     try:
         for segment in vad_loop(mic, console, vad_cfg=config.vad, silero=silero_model):
