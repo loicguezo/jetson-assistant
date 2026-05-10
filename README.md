@@ -121,11 +121,12 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 
 | Component | Time | Model |
 |-----------|-----:|-------|
-| TTS (synthesis) | 3.66 s | Kokoro `af_sarah`, CPU |
+| TTS (synthesis) | ~0.5 s | Kokoro `af_sarah`, CUDA (RTF 0.14×) |
 | STT (transcribe) | 1.19 s | faster-whisper `small.en`, CUDA |
-| LLM (time to first token) | 3.55 s | Gemma 4 E4B Q4_K_M |
-| LLM (full response) | 4.15 s | Gemma 4 E4B Q4_K_M |
-| **Total** | **9.01 s** | TTS + STT + LLM |
+| LLM (time to first token) | 0.4–0.9 s | Gemma 4 E4B Q4_K_M (`--reasoning off`) |
+| LLM (full response) | 2–4 s | Gemma 4 E4B Q4_K_M |
+
+> Numbers updated after enabling CUDA for TTS (`onnxruntime-gpu`) and adding `--reasoning off -np 1` to llama-server. Run `./jetson-assistant benchmark` to get exact values on your setup.
 
 ## Roadmap
 
