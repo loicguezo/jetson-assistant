@@ -1,0 +1,19 @@
+# Local config overrides — copy this file to settings.local.yaml and edit.
+# settings.local.yaml is gitignored and never committed.
+# Only include the keys you want to override; everything else stays from settings.yaml.
+# Priority: settings.local.yaml > settings.yaml (env vars / CLI flags win over both)
+
+# tts:
+#   backend: piper                      # kokoro (default) or piper
+#   piper_model: de_DE-thorsten-high    # any model from rhasspy.github.io/piper-samples
+#   voice: af_sarah                     # kokoro voice (ignored when backend: piper)
+#   speed: 1.1
+
+# stt:
+#   language: de                        # de, fr, es, ... (switch model to small for multilingual)
+#   model: small                        # small.en (English only) or small (multilingual)
+
+# llm:
+#   max_tokens: 256
+#   temperature: 0.5
+#   system_prompt: "Du bist ein hilfreicher Assistent. Antworte auf Deutsch."

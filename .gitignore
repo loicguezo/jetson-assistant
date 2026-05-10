@@ -68,3 +68,6 @@ htmlcov/
 
 # Conversation history (persisted locally, not shared)
 history.json
+
+# Local config overrides (personal preferences, never committed)
+config/settings.local.yaml
