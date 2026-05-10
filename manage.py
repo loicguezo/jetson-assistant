@@ -42,6 +42,7 @@ from app.manager import (
 )
 from app.monitor import format_stats, get_system_stats
 from app.optimize import (
+    _run,
     apply_optimizations,
     build_plan,
     load_state,
@@ -454,8 +455,6 @@ def start(
     ),
 ):
     """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
-    console.print(Panel.fit("[bold cyan]Jetson Voice Assistant[/bold cyan]", border_style="cyan"))
-
     # ── First-time config wizard ───────────────────────────────
     if not _LOCAL_CONFIG_PATH.exists():
         _run_config_wizard(first_time=True)
@@ -466,10 +465,9 @@ def start(
         from app.config import Config as _Cfg
 
         text = _Cfg.load().app.mode == "text"
-    if text:
-        console.print(
-            Panel.fit("[bold cyan]Jetson Text Assistant[/bold cyan]", border_style="cyan")
-        )
+
+    title = "Jetson Text Assistant" if text else "Jetson Voice Assistant"
+    console.print(Panel.fit(f"[bold cyan]{title}[/bold cyan]", border_style="cyan"))
 
     # ── Check llama-server binary ──────────────────────────────
     llama_bin = find_llama_server()
@@ -752,6 +750,10 @@ def _optimize_status():
     console.print(f"  [yellow]Optimized[/yellow] — {len(applied)} change(s) active:\n")
     for item in applied:
         console.print(f"    [dim]• {item}[/dim]")
+
+    if _optimize_service_active():
+        console.print(f"    [dim]• {_OPTIMIZE_SERVICE_NAME} (autostart on boot)[/dim]")
+
     console.print("\n  Run [bold]optimize --restore[/bold] to revert.")
     console.print()
 
@@ -765,9 +767,19 @@ def _optimize_apply(skip_prompts: bool = False):
         )
     )
 
-    if load_state():
-        console.print("[yellow]Optimizations already applied.[/yellow]")
-        console.print("Run [bold]optimize --restore[/bold] first to reapply.")
+    state = load_state()
+    if state:
+        # If jetson_clocks was applied but autostart service not yet installed, offer it now
+        if "jetson_clocks" in state.get("applied", []) and not _optimize_service_active():
+            console.print("[yellow]Optimizations already applied.[/yellow]")
+            if skip_prompts or Confirm.ask(
+                "Apply clock optimizations automatically on every boot? (installs systemd service)",
+                default=True,
+            ):
+                _install_optimize_service()
+        else:
+            console.print("[yellow]Optimizations already applied.[/yellow]")
+            console.print("Run [bold]optimize --restore[/bold] first to reapply.")
         raise typer.Exit()
 
     console.print("\n[bold]Analyzing system...[/bold]")
@@ -874,8 +886,75 @@ def _optimize_apply(skip_prompts: bool = False):
     console.print("  [dim]A reboot is required to fully apply all changes.[/dim]")
     console.print("  Run [bold]optimize --restore[/bold] to undo.\n")
 
+    # ── Autostart service ─────────────────────────────────────────
+    if approved["jetson_clocks"] and _ask(
+        "Apply clock optimizations automatically on every boot? (installs systemd service)",
+        default=True,
+    ):
+        _install_optimize_service()
+
     if _ask("Reboot now to fully apply all changes?", default=False):
         subprocess.run(["sudo", "reboot"])
+
+
+_OPTIMIZE_SERVICE_NAME = "jetson-optimize.service"
+_OPTIMIZE_SERVICE_PATH = Path("/etc/systemd/system") / _OPTIMIZE_SERVICE_NAME
+_OPTIMIZE_SERVICE_CONTENT = """\
+[Unit]
+Description=Jetson clock optimizations (jetson_clocks)
+After=multi-user.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/jetson_clocks
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+"""
+
+
+def _install_optimize_service() -> bool:
+    """Install and enable jetson-optimize.service. Returns True on success."""
+    import tempfile
+
+    # Write service file via sudo tee
+    with tempfile.NamedTemporaryFile("w", suffix=".service", delete=False) as f:
+        f.write(_OPTIMIZE_SERVICE_CONTENT)
+        tmp = f.name
+
+    rc1, _ = _run(["cp", tmp, str(_OPTIMIZE_SERVICE_PATH)], sudo=True)
+    Path(tmp).unlink(missing_ok=True)
+    if rc1 != 0:
+        console.print("  [red]✗ Failed to write service file (need sudo).[/red]")
+        return False
+
+    _run(["systemctl", "daemon-reload"], sudo=True)
+    rc2, _ = _run(["systemctl", "enable", "--now", _OPTIMIZE_SERVICE_NAME], sudo=True)
+    if rc2 != 0:
+        console.print(f"  [red]✗ Failed to enable {_OPTIMIZE_SERVICE_NAME}.[/red]")
+        return False
+
+    console.print(f"  [green]✓ {_OPTIMIZE_SERVICE_NAME} installed and enabled.[/green]")
+    console.print("  Clock optimizations will apply automatically on every boot.")
+    return True
+
+
+def _remove_optimize_service() -> bool:
+    """Disable and remove jetson-optimize.service. Returns True on success."""
+    _run(["systemctl", "disable", "--now", _OPTIMIZE_SERVICE_NAME], sudo=True)
+    rc, _ = _run(["rm", "-f", str(_OPTIMIZE_SERVICE_PATH)], sudo=True)
+    _run(["systemctl", "daemon-reload"], sudo=True)
+    if rc == 0:
+        console.print(f"  [green]✓ {_OPTIMIZE_SERVICE_NAME} removed.[/green]")
+        return True
+    console.print(f"  [red]✗ Failed to remove {_OPTIMIZE_SERVICE_NAME}.[/red]")
+    return False
+
+
+def _optimize_service_active() -> bool:
+    rc, _ = _run(["systemctl", "is-enabled", _OPTIMIZE_SERVICE_NAME], sudo=False)
+    return rc == 0
 
 
 def _optimize_restore():
@@ -904,6 +983,11 @@ def _optimize_restore():
     if not Confirm.ask("Restore? (requires sudo)", default=False):
         console.print("[yellow]Cancelled.[/yellow]")
         raise typer.Exit()
+
+    # Remove autostart service if installed
+    if _optimize_service_active():
+        if Confirm.ask(f"  Remove autostart service ({_OPTIMIZE_SERVICE_NAME})?", default=True):
+            _remove_optimize_service()
 
     console.print("\n[bold]Restoring...[/bold]")
     restored = restore_optimizations(state)
