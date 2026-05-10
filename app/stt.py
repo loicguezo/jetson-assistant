@@ -15,8 +15,9 @@
 
 """STT — faster-whisper, GPU-accelerated Whisper on Jetson."""
 
-from typing import Dict, Any, Union
 from pathlib import Path
+from typing import Any
+
 import numpy as np
 
 
@@ -30,8 +31,10 @@ def _preload_ctranslate2_lib() -> None:
     LD_LIBRARY_PATH is set in the calling process.
     """
     import ctypes
+
     candidates = [
-        Path(__file__).parent.parent / "venv/lib/python3.10/site-packages/ctranslate2/libctranslate2.so.4",
+        Path(__file__).parent.parent
+        / "venv/lib/python3.10/site-packages/ctranslate2/libctranslate2.so.4",
         Path.home() / ".local/lib/libctranslate2.so.4",
     ]
     try:
@@ -71,15 +74,17 @@ class STT:
     def load(self) -> bool:
         try:
             from faster_whisper import WhisperModel
-            self._model = WhisperModel(self.model_name, device=self.device,
-                                       compute_type=self.compute_type)
+
+            self._model = WhisperModel(
+                self.model_name, device=self.device, compute_type=self.compute_type
+            )
             return True
         except Exception as e:
             print(f"faster-whisper CUDA load error: {e}")
             try:
                 from faster_whisper import WhisperModel
-                self._model = WhisperModel(self.model_name, device="cpu",
-                                           compute_type="auto")
+
+                self._model = WhisperModel(self.model_name, device="cpu", compute_type="auto")
                 self.device = "cpu"
                 self.cpu_fallback = True
                 return True
@@ -87,7 +92,7 @@ class STT:
                 print(f"STT CPU fallback failed: {e2}")
                 return False
 
-    def transcribe(self, audio: Union[np.ndarray, str], sample_rate: int = 16000) -> Dict[str, Any]:
+    def transcribe(self, audio: np.ndarray | str, sample_rate: int = 16000) -> dict[str, Any]:
         if self._model is None:
             return {"text": "", "error": "Model not loaded"}
         try:
@@ -101,15 +106,18 @@ class STT:
                     audio = audio / 32768.0
 
             segments, info = self._model.transcribe(
-                audio, language=self.language, beam_size=self.beam_size,
-                no_speech_threshold=0.1, log_prob_threshold=-1.0,
+                audio,
+                language=self.language,
+                beam_size=self.beam_size,
+                no_speech_threshold=0.1,
+                log_prob_threshold=-1.0,
             )
             text = " ".join(s.text for s in segments).strip()
             return {"text": text, "language": info.language, "duration": info.duration}
         except Exception as e:
             return {"text": "", "error": str(e)}
 
-    def get_info(self) -> Dict[str, Any]:
+    def get_info(self) -> dict[str, Any]:
         return {
             "backend": "faster-whisper",
             "model": self.model_name,

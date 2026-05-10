@@ -15,18 +15,18 @@
 
 """Pipeline — audio I/O, VAD, TTS streaming, and mic recording."""
 
+import queue
+import subprocess
 import sys
+import threading
 import time
 import wave
-import subprocess
-import threading
-import queue
 from collections import deque
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Optional, Iterator
+from pathlib import Path
 
 import numpy as np
-from pathlib import Path
 from rich.console import Console
 
 from app.audio import kill_pulseaudio
@@ -38,10 +38,17 @@ _ALSA_ERR_T = None
 _alsa_handler = None
 try:
     import ctypes
-    _ALSA_ERR_T = ctypes.CFUNCTYPE(None, ctypes.c_char_p, ctypes.c_int,
-                                    ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p)
+
+    _ALSA_ERR_T = ctypes.CFUNCTYPE(
+        None,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+        ctypes.c_int,
+        ctypes.c_char_p,
+    )
     _alsa_handler = _ALSA_ERR_T(lambda *_: None)
-    ctypes.cdll.LoadLibrary('libasound.so.2').snd_lib_error_set_handler(_alsa_handler)
+    ctypes.cdll.LoadLibrary("libasound.so.2").snd_lib_error_set_handler(_alsa_handler)
 except Exception:
     pass
 
@@ -52,14 +59,15 @@ SAMPLE_RATE = 16000
 SILERO_CHUNK_SAMPLES = 512  # Silero VAD requires exactly 512 samples (32ms) at 16kHz
 CHANNELS = 1
 
-TTS_BREAKS = frozenset('.,;:!?\n')
+TTS_BREAKS = frozenset(".,;:!?\n")
 
 
 # ── Audio helpers ─────────────────────────────────────────────────
 
+
 def chunk_rms(raw: bytes) -> float:
     pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-    return float(np.sqrt(np.mean(pcm ** 2)))
+    return float(np.sqrt(np.mean(pcm**2)))
 
 
 def save_wav(chunks: list[bytes], path: str):
@@ -73,6 +81,7 @@ def save_wav(chunks: list[bytes], path: str):
 def warmup_stt(stt_obj) -> float:
     """Run a dummy transcription to warm up CUDA. Returns elapsed seconds."""
     import tempfile
+
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp:
         path = tmp.name
     try:
@@ -95,25 +104,37 @@ def _pa_match(needle: str, haystack: str) -> bool:
     return n in h
 
 
-def find_pa_source(name_hint: str) -> Optional[str]:
+def find_pa_source(name_hint: str) -> str | None:
     """Find a PulseAudio input source matching name_hint."""
     try:
-        r = subprocess.run(["pactl", "list", "short", "sources"],
-                           capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            ["pactl", "list", "short", "sources"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         for line in r.stdout.splitlines():
             parts = line.split("\t")
-            if len(parts) >= 2 and _pa_match(name_hint, parts[1]) and "monitor" not in parts[1].lower():
+            if (
+                len(parts) >= 2
+                and _pa_match(name_hint, parts[1])
+                and "monitor" not in parts[1].lower()
+            ):
                 return parts[1]
     except Exception:
         pass
     return None
 
 
-def find_pa_sink(name_hint: str) -> Optional[str]:
+def find_pa_sink(name_hint: str) -> str | None:
     """Find a PulseAudio output sink matching name_hint."""
     try:
-        r = subprocess.run(["pactl", "list", "short", "sinks"],
-                           capture_output=True, text=True, timeout=5)
+        r = subprocess.run(
+            ["pactl", "list", "short", "sinks"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
         for line in r.stdout.splitlines():
             parts = line.split("\t")
             if len(parts) >= 2 and _pa_match(name_hint, parts[1]):
@@ -123,7 +144,7 @@ def find_pa_sink(name_hint: str) -> Optional[str]:
     return None
 
 
-def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
+def play_audio(audio: np.ndarray, sample_rate: int, sink: str | None = None):
     """Play int16 audio via paplay (PulseAudio) or aplay fallback.
 
     sink=None  → paplay with PulseAudio default sink (respects BT speaker etc.)
@@ -150,7 +171,18 @@ def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
         return
     # aplay fallback when paplay is not installed
     try:
-        cmd = ["aplay", "-f", "S16_LE", "-r", str(sample_rate), "-c", "1", "-t", "raw", "-q"]
+        cmd = [
+            "aplay",
+            "-f",
+            "S16_LE",
+            "-r",
+            str(sample_rate),
+            "-c",
+            "1",
+            "-t",
+            "raw",
+            "-q",
+        ]
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
             p.stdin.write(raw)
@@ -161,7 +193,7 @@ def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
         pass
 
 
-def tts_player(tts_obj, tts_q: queue.Queue, sink: Optional[str] = None):
+def tts_player(tts_obj, tts_q: queue.Queue, sink: str | None = None):
     """Synthesize and play TTS chunks with synthesis overlapping playback.
 
     A synthesis thread pre-fetches the next chunk while the current one plays.
@@ -181,8 +213,7 @@ def tts_player(tts_obj, tts_q: queue.Queue, sink: Optional[str] = None):
 
     threading.Thread(target=_synthesize, daemon=True).start()
 
-    proc: Optional[subprocess.Popen] = None
-    use_aplay = False
+    proc: subprocess.Popen | None = None
 
     while True:
         r = audio_q.get()
@@ -198,15 +229,22 @@ def tts_player(tts_obj, tts_q: queue.Queue, sink: Optional[str] = None):
             pa_args = ["--format=s16le", f"--rate={sr}", "--channels=1", "--raw"]
             cmd = (["paplay", f"--device={sink}"] if sink else ["paplay"]) + pa_args
             try:
-                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL)
+                proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
             except FileNotFoundError:
-                use_aplay = True
-                cmd = ["aplay", "-f", "S16_LE", "-r", str(sr), "-c", "1",
-                       "-t", "raw", "-q"]
+                cmd = [
+                    "aplay",
+                    "-f",
+                    "S16_LE",
+                    "-r",
+                    str(sr),
+                    "-c",
+                    "1",
+                    "-t",
+                    "raw",
+                    "-q",
+                ]
                 try:
-                    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE,
-                                            stderr=subprocess.DEVNULL)
+                    proc = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
                 except FileNotFoundError:
                     continue
 
@@ -228,12 +266,14 @@ def tts_player(tts_obj, tts_q: queue.Queue, sink: Optional[str] = None):
 
 # ── Silero VAD ────────────────────────────────────────────────────
 
+
 class SileroVAD:
     """Thin wrapper around the Silero VAD ONNX model."""
 
     def __init__(self):
-        from silero_vad import load_silero_vad
         import torch
+        from silero_vad import load_silero_vad
+
         self._model = load_silero_vad(onnx=True)
         self._torch = torch
 
@@ -247,7 +287,7 @@ class SileroVAD:
         self._model.reset_states()
 
 
-def load_silero(console: Optional[Console] = None) -> Optional[SileroVAD]:
+def load_silero(console: Console | None = None) -> SileroVAD | None:
     """Try to load Silero VAD. Returns wrapper or None on failure."""
     try:
         t0 = time.perf_counter()
@@ -258,7 +298,9 @@ def load_silero(console: Optional[Console] = None) -> Optional[SileroVAD]:
         return vad
     except ImportError:
         if console:
-            console.print("  [yellow]⚠ silero-vad not installed (pip install silero-vad), using energy VAD[/yellow]")
+            console.print(
+                "  [yellow]⚠ silero-vad not installed (pip install silero-vad), using energy VAD[/yellow]"
+            )
         return None
     except Exception as e:
         if console:
@@ -268,9 +310,11 @@ def load_silero(console: Optional[Console] = None) -> Optional[SileroVAD]:
 
 # ── Speech segment ────────────────────────────────────────────────
 
+
 @dataclass
 class SpeechSegment:
     """A completed speech utterance from the VAD."""
+
     audio: np.ndarray
     raw_chunks: list
     duration: float
@@ -280,6 +324,7 @@ class SpeechSegment:
 
 
 # ── Mic recorder ──────────────────────────────────────────────────
+
 
 class MicRecorder:
     """Manages mic recording via parecord/arecord with a background reader thread."""
@@ -293,9 +338,9 @@ class MicRecorder:
         self.listening = threading.Event()
         self.listening.set()
         self.alive = True
-        self._proc: Optional[subprocess.Popen] = None
-        self.pa_source: Optional[str] = None
-        self.pa_sink: Optional[str] = None
+        self._proc: subprocess.Popen | None = None
+        self.pa_source: str | None = None
+        self.pa_sink: str | None = None
 
     def start(self, hw: str, mic_hint: str) -> bool:
         """Start recording. Returns True on success."""
@@ -308,17 +353,37 @@ class MicRecorder:
 
         if self.pa_source:
             self.console.print(f"  PA source: {self.pa_source.split('.')[-2]}")
-            rec_cmd = ["parecord", "-d", self.pa_source, "--format=s16le",
-                       f"--rate={SAMPLE_RATE}", f"--channels={CHANNELS}", "--raw"]
+            rec_cmd = [
+                "parecord",
+                "-d",
+                self.pa_source,
+                "--format=s16le",
+                f"--rate={SAMPLE_RATE}",
+                f"--channels={CHANNELS}",
+                "--raw",
+            ]
         else:
             self.console.print("  [yellow]PA source not found, using ALSA direct[/yellow]")
             plughw = hw.replace("hw:", "plughw:")
-            rec_cmd = ["arecord", "-D", plughw, "-f", "S16_LE", "-r", str(SAMPLE_RATE),
-                       "-c", str(CHANNELS), "-t", "raw"]
+            rec_cmd = [
+                "arecord",
+                "-D",
+                plughw,
+                "-f",
+                "S16_LE",
+                "-r",
+                str(SAMPLE_RATE),
+                "-c",
+                str(CHANNELS),
+                "-t",
+                "raw",
+            ]
 
         for attempt in range(3):
             self._proc = subprocess.Popen(
-                rec_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                rec_cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
                 # Own process group so Ctrl+C (SIGINT) from the terminal
                 # does not reach the recorder — we shut it down explicitly
                 # via stop(), which sends SIGTERM then SIGKILL if needed.
@@ -328,11 +393,13 @@ class MicRecorder:
             if self._proc.poll() is None:
                 break
             err = self._proc.stderr.read().decode(errors="replace").strip()
-            self.console.print(f"  [red]Mic attempt {attempt+1} failed: {err}[/red]")
+            self.console.print(f"  [red]Mic attempt {attempt + 1} failed: {err}[/red]")
             # If ALSA says device is busy, release PulseAudio and retry once.
             # Only do this as a last resort — killing PA disconnects BT audio.
-            if attempt == 0 and self.pa_source is None and (
-                "busy" in err.lower() or "device or resource busy" in err.lower()
+            if (
+                attempt == 0
+                and self.pa_source is None
+                and ("busy" in err.lower() or "device or resource busy" in err.lower())
             ):
                 self.console.print("  [dim]ALSA device busy — releasing PulseAudio...[/dim]")
                 kill_pulseaudio()
@@ -410,11 +477,12 @@ class MicRecorder:
 
 # ── VAD loop ──────────────────────────────────────────────────────
 
+
 def vad_loop(
     mic: MicRecorder,
     console: Console,
-    vad_cfg: Optional[VADConfig] = None,
-    silero: Optional[SileroVAD] = None,
+    vad_cfg: VADConfig | None = None,
+    silero: SileroVAD | None = None,
 ) -> Iterator[SpeechSegment]:
     """Yields SpeechSegment each time a complete utterance is detected.
 
@@ -516,17 +584,18 @@ def vad_loop(
 
 # ── LLM streaming with TTS ───────────────────────────────────────
 
+
 def stream_and_speak(
     llm,
     tts_obj,
     prompt: str,
     system_prompt: str,
-    pa_sink: Optional[str] = None,
-    few_shot: Optional[list[dict]] = None,
+    pa_sink: str | None = None,
+    few_shot: list[dict] | None = None,
     first_chunk_words: int = 3,
     max_chunk_words: int = 8,
     _retry: bool = True,
-) -> tuple[str, float, Optional[float]]:
+) -> tuple[str, float, float | None]:
     """Stream LLM response while chunking text to TTS for real-time playback.
 
     Returns (full_response, elapsed_seconds, time_to_first_token).
@@ -537,7 +606,9 @@ def stream_and_speak(
     if tts_obj:
         tts_q = queue.Queue()
         tts_thread = threading.Thread(
-            target=tts_player, args=(tts_obj, tts_q, pa_sink), daemon=True,
+            target=tts_player,
+            args=(tts_obj, tts_q, pa_sink),
+            daemon=True,
         )
         tts_thread.start()
 
@@ -548,7 +619,8 @@ def stream_and_speak(
     ttft = None
 
     for chunk_data in llm.generate_stream(
-        prompt=prompt, system_prompt=system_prompt,
+        prompt=prompt,
+        system_prompt=system_prompt,
         few_shot=few_shot,
     ):
         content, meta = chunk_data if isinstance(chunk_data, tuple) else (chunk_data, {})
@@ -584,8 +656,12 @@ def stream_and_speak(
     if ttft is None and _retry:
         time.sleep(0.3)
         return stream_and_speak(
-            llm, tts_obj, prompt, system_prompt,
-            pa_sink=pa_sink, few_shot=few_shot,
+            llm,
+            tts_obj,
+            prompt,
+            system_prompt,
+            pa_sink=pa_sink,
+            few_shot=few_shot,
             first_chunk_words=first_chunk_words,
             max_chunk_words=max_chunk_words,
             _retry=False,
@@ -596,15 +672,20 @@ def stream_and_speak(
 
 # ── Shared startup helpers ────────────────────────────────────────
 
+
 def load_llm(config, console: Console):
     """Load and connect the LLM from config. Prints status. Returns LLM instance."""
     from app.llm import LLM
     from app.monitor import ram_used_gb
+
     ram_before = ram_used_gb()
     llm = LLM(
-        model=config.llm.model, base_url=config.llm.base_url,
-        backend=config.llm.backend, max_tokens=config.llm.max_tokens,
-        temperature=config.llm.temperature, timeout=config.llm.timeout,
+        model=config.llm.model,
+        base_url=config.llm.base_url,
+        backend=config.llm.backend,
+        max_tokens=config.llm.max_tokens,
+        temperature=config.llm.temperature,
+        timeout=config.llm.timeout,
         system_prompt=config.llm.system_prompt,
     )
     if not llm.load():
@@ -612,32 +693,39 @@ def load_llm(config, console: Console):
         return None
     delta = ram_used_gb() - ram_before
     total = ram_used_gb()
-    console.print(f"  ✓ LLM ({llm.model})"
-                  f"[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]")
+    console.print(f"  ✓ LLM ({llm.model})[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]")
     return llm
 
 
 def load_tts(config, console: Console):
     """Load TTS from config. Prints status. Returns TTS instance or None."""
-    from app.tts import create_tts
     from app.monitor import ram_used_gb
+    from app.tts import create_tts
+
     ram_before = ram_used_gb()
     tts = create_tts(voice=config.tts.voice, speed=config.tts.speed, lang=config.tts.lang)
     tts = tts if tts.load() else None
     if tts:
         delta = ram_used_gb() - ram_before
         total = ram_used_gb()
-        console.print(f"  ✓ TTS ({tts.backend_name}, {tts.voice})"
-                      f"[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]")
+        console.print(
+            f"  ✓ TTS ({tts.backend_name}, {tts.voice})[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]"
+        )
     else:
         console.print("  ⚠ TTS unavailable — responses will be text only")
     return tts
 
 
-def print_response_timing(console: Console, full_resp: str, dt_llm: float,
-                          ttft: Optional[float], prefix: str = "  "):
+def print_response_timing(
+    console: Console,
+    full_resp: str,
+    dt_llm: float,
+    ttft: float | None,
+    prefix: str = "  ",
+):
     """Print TTFT / tok/s timing + live system stats after a response."""
-    from app.monitor import get_system_stats, format_stats_inline
+    from app.monitor import format_stats_inline, get_system_stats
+
     stats = format_stats_inline(get_system_stats())
     if ttft is not None:
         toks = len(full_resp.split())

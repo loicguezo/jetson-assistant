@@ -1,20 +1,18 @@
 """Process management — llama-server lifecycle and PID tracking."""
 
 import os
-import sys
-import time
-import signal
 import shutil
+import signal
 import subprocess
+import time
 from pathlib import Path
-from typing import Optional
 
 import httpx
 
 STATE_DIR = Path.home() / ".jetson-assistant"
-LLAMA_PID_FILE  = STATE_DIR / "llama-server.pid"
+LLAMA_PID_FILE = STATE_DIR / "llama-server.pid"
 LLAMA_PORT_FILE = STATE_DIR / "llama-server.port"
-LLAMA_LOG_FILE  = STATE_DIR / "llama-server.log"
+LLAMA_LOG_FILE = STATE_DIR / "llama-server.log"
 
 _LLAMA_SEARCH_PATHS = [
     Path.home() / "llama.cpp/build/bin/llama-server",
@@ -23,7 +21,7 @@ _LLAMA_SEARCH_PATHS = [
 ]
 
 
-def find_llama_server() -> Optional[Path]:
+def find_llama_server() -> Path | None:
     for p in _LLAMA_SEARCH_PATHS:
         if p.exists() and os.access(p, os.X_OK):
             return p
@@ -65,7 +63,7 @@ def _save_pid(pid_file: Path, pid: int):
     pid_file.write_text(str(pid))
 
 
-def read_pid(pid_file: Path) -> Optional[int]:
+def read_pid(pid_file: Path) -> int | None:
     if not pid_file.exists():
         return None
     try:
@@ -110,25 +108,34 @@ def wait_for_llama_server(timeout: int = 120) -> bool:
     return False
 
 
-def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 8192) -> Optional[int]:
+def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 8192) -> int | None:
     llama = find_llama_server()
     if not llama:
         return None
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     cmd = [
         str(llama),
-        "-m", str(model_path),
-        "--port", str(port),
-        "--host", "127.0.0.1",
-        "-ngl", "99",
-        "-c", str(ctx),
-        "-np", "1",           # single slot = full KV-cache reuse across turns
-        "--reasoning", "off", # disable thinking tokens (saves 15-28s TTFT on thinking models)
+        "-m",
+        str(model_path),
+        "--port",
+        str(port),
+        "--host",
+        "127.0.0.1",
+        "-ngl",
+        "99",
+        "-c",
+        str(ctx),
+        "-np",
+        "1",  # single slot = full KV-cache reuse across turns
+        "--reasoning",
+        "off",  # disable thinking tokens (saves 15-28s TTFT on thinking models)
     ]
     try:
         with open(LLAMA_LOG_FILE, "w") as log:
             proc = subprocess.Popen(
-                cmd, stdout=log, stderr=log,
+                cmd,
+                stdout=log,
+                stderr=log,
                 start_new_session=True,
             )
     except Exception as e:
@@ -160,7 +167,9 @@ def find_llama_server_pids() -> list[int]:
     try:
         result = subprocess.run(
             ["pgrep", "-f", "llama-server"],
-            capture_output=True, text=True, timeout=5,
+            capture_output=True,
+            text=True,
+            timeout=5,
         )
         return [int(p) for p in result.stdout.split() if p.strip().isdigit()]
     except Exception:
@@ -185,7 +194,7 @@ def stop_llama_server():
         LLAMA_PORT_FILE.unlink()
 
 
-def get_llama_model_name() -> Optional[str]:
+def get_llama_model_name() -> str | None:
     try:
         r = httpx.get(f"http://127.0.0.1:{_llama_port()}/v1/models", timeout=2.0)
         models = r.json().get("data", [])

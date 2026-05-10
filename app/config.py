@@ -17,8 +17,8 @@
 
 import os
 from dataclasses import dataclass, field
-from typing import Optional
 from pathlib import Path
+
 import yaml
 
 
@@ -56,7 +56,7 @@ class TTSConfig:
 class AudioConfig:
     sample_rate: int = 16000
     channels: int = 1
-    input_device: Optional[str] = None
+    input_device: str | None = None
 
 
 @dataclass
@@ -90,7 +90,7 @@ class Config:
     vad: VADConfig = field(default_factory=VADConfig)
 
     @classmethod
-    def load(cls, config_path: Optional[str] = None) -> "Config":
+    def load(cls, config_path: str | None = None) -> "Config":
         if config_path is None:
             config_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         config = cls()

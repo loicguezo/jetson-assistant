@@ -7,10 +7,10 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.monitor import (
-    get_system_stats,
     format_stats,
     format_stats_inline,
     get_power_mode,
+    get_system_stats,
     ram_used_gb,
 )
 

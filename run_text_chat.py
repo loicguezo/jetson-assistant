@@ -27,13 +27,14 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.config import Config
-from app.pipeline import stream_and_speak, load_llm, load_tts, print_response_timing
-from app.history import load_history, save_history, clear_history
-from app.monitor import get_system_stats, format_stats
 from rich.console import Console
-from rich.prompt import Prompt
 from rich.panel import Panel
+from rich.prompt import Prompt
+
+from app.config import Config
+from app.history import clear_history, load_history, save_history
+from app.monitor import format_stats, get_system_stats
+from app.pipeline import load_llm, load_tts, print_response_timing, stream_and_speak
 
 console = Console()
 
@@ -41,12 +42,14 @@ console = Console()
 def main():
     config = Config.load()
 
-    console.print(Panel.fit(
-        "[bold cyan]Text Assistant[/bold cyan]\n"
-        "Type your message — response is spoken aloud\n"
-        "[dim]'quit' to exit · 'stats' for system info · Ctrl-C to quit[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Text Assistant[/bold cyan]\n"
+            "Type your message — response is spoken aloud\n"
+            "[dim]'quit' to exit · 'stats' for system info · Ctrl-C to quit[/dim]",
+            border_style="cyan",
+        )
+    )
 
     console.print("\n[bold]Loading...[/bold]")
     llm = load_llm(config, console)
@@ -59,6 +62,7 @@ def main():
         r = tts.synthesize("Ready.")
         if r.get("audio") is not None:
             from app.pipeline import play_audio
+
             play_audio(r["audio"], r["sample_rate"])
 
     max_history = config.llm.memory_turns * 2  # user + assistant per turn
@@ -77,7 +81,11 @@ def main():
                 if text.strip().lower() == "stats":
                     console.print(f"  {format_stats(get_system_stats())}")
                     continue
-                if text.strip().lower() in ("forget", "forget everything", "clear history"):
+                if text.strip().lower() in (
+                    "forget",
+                    "forget everything",
+                    "clear history",
+                ):
                     history.clear()
                     clear_history()
                     console.print("[dim]  History cleared.[/dim]")
@@ -89,7 +97,10 @@ def main():
                 sys.stdout.flush()
 
                 full_resp, dt_llm, ttft = stream_and_speak(
-                    llm, tts, text, config.llm.system_prompt,
+                    llm,
+                    tts,
+                    text,
+                    config.llm.system_prompt,
                     pa_sink=None,
                     few_shot=few_shot,
                     first_chunk_words=config.tts.first_chunk_words,

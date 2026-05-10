@@ -15,9 +15,10 @@
 
 """LLM — Ollama or OpenAI-compatible backend (llama.cpp)."""
 
-import httpx
 import json
-from typing import Optional, Iterator
+from collections.abc import Iterator
+
+import httpx
 
 
 class LLM:
@@ -73,8 +74,10 @@ class LLM:
             return False
 
     def _messages(
-        self, prompt: str, system_prompt: Optional[str] = None,
-        few_shot: Optional[list[dict]] = None,
+        self,
+        prompt: str,
+        system_prompt: str | None = None,
+        few_shot: list[dict] | None = None,
     ) -> list:
         msgs = []
         sp = system_prompt or self.system_prompt
@@ -88,10 +91,10 @@ class LLM:
     def generate_stream(
         self,
         prompt: str,
-        system_prompt: Optional[str] = None,
-        max_tokens: Optional[int] = None,
-        temperature: Optional[float] = None,
-        few_shot: Optional[list[dict]] = None,
+        system_prompt: str | None = None,
+        max_tokens: int | None = None,
+        temperature: float | None = None,
+        few_shot: list[dict] | None = None,
     ) -> Iterator[tuple]:
         """Yields (content, metadata) tuples."""
         if not self._loaded:
@@ -109,10 +112,17 @@ class LLM:
     def _stream_openai(self, messages, max_tokens, temperature) -> Iterator[tuple]:
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                with client.stream("POST", f"{self.base_url}/v1/chat/completions", json={
-                    "model": self.model, "messages": messages, "stream": True,
-                    "max_tokens": max_tokens, "temperature": temperature,
-                }) as r:
+                with client.stream(
+                    "POST",
+                    f"{self.base_url}/v1/chat/completions",
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "stream": True,
+                        "max_tokens": max_tokens,
+                        "temperature": temperature,
+                    },
+                ) as r:
                     if r.status_code != 200:
                         err = r.read(512).decode(errors="replace")
                         print(f"\n  [LLM error {r.status_code}] {err}")
@@ -129,9 +139,17 @@ class LLM:
                             data = json.loads(line[5:])
                             usage = data.get("usage")
                             if usage:
-                                yield ("", {"done": True, "eval_count": usage.get("completion_tokens", 0)})
+                                yield (
+                                    "",
+                                    {
+                                        "done": True,
+                                        "eval_count": usage.get("completion_tokens", 0),
+                                    },
+                                )
                                 return
-                            content = ((data.get("choices") or [{}])[0].get("delta") or {}).get("content", "")
+                            content = ((data.get("choices") or [{}])[0].get("delta") or {}).get(
+                                "content", ""
+                            )
                             if content:
                                 yield (content, {})
                         except json.JSONDecodeError:
@@ -143,11 +161,20 @@ class LLM:
     def _stream_ollama(self, messages, max_tokens, temperature) -> Iterator[tuple]:
         try:
             with httpx.Client(timeout=self.timeout) as client:
-                with client.stream("POST", f"{self.base_url}/api/chat", json={
-                    "model": self.model, "messages": messages, "stream": True,
-                    "keep_alive": "1h",
-                    "options": {"num_predict": max_tokens, "temperature": temperature},
-                }) as r:
+                with client.stream(
+                    "POST",
+                    f"{self.base_url}/api/chat",
+                    json={
+                        "model": self.model,
+                        "messages": messages,
+                        "stream": True,
+                        "keep_alive": "1h",
+                        "options": {
+                            "num_predict": max_tokens,
+                            "temperature": temperature,
+                        },
+                    },
+                ) as r:
                     if r.status_code != 200:
                         yield ("", {})
                         return
@@ -160,7 +187,10 @@ class LLM:
                             done = data.get("done", False)
                             meta = {}
                             if done:
-                                meta = {"done": True, "eval_count": data.get("eval_count", 0)}
+                                meta = {
+                                    "done": True,
+                                    "eval_count": data.get("eval_count", 0),
+                                }
                             if content:
                                 yield (content, meta)
                             elif done:
@@ -176,7 +206,11 @@ class LLM:
             return False
         try:
             with httpx.Client(timeout=5.0) as client:
-                url = f"{self.base_url}/v1/models" if self.backend == "openai" else f"{self.base_url}/api/tags"
+                url = (
+                    f"{self.base_url}/v1/models"
+                    if self.backend == "openai"
+                    else f"{self.base_url}/api/tags"
+                )
                 return client.get(url).status_code == 200
         except Exception:
             return False

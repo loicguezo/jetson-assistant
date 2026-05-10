@@ -12,20 +12,16 @@ or:
 
 import json
 import sys
-import time
 from pathlib import Path
 
 import httpx
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
+from app.history import HISTORY_FILE, clear_history
 from app.manager import get_llama_server_port
-from app.history import clear_history, HISTORY_FILE
 
-SYSTEM_PROMPT = (
-    "You are a helpful voice assistant. "
-    "Answer in one sentence. Be direct."
-)
+SYSTEM_PROMPT = "You are a helpful voice assistant. Answer in one sentence. Be direct."
 
 
 def _base_url() -> str:
@@ -43,12 +39,16 @@ def _server_running() -> bool:
 def ask(messages: list[dict]) -> str:
     """Send a messages list and return the full response text."""
     with httpx.Client(timeout=60.0) as client:
-        with client.stream("POST", f"{_base_url()}/v1/chat/completions", json={
-            "messages": messages,
-            "stream": True,
-            "max_tokens": 64,
-            "temperature": 0.1,  # low temperature for deterministic answers
-        }) as r:
+        with client.stream(
+            "POST",
+            f"{_base_url()}/v1/chat/completions",
+            json={
+                "messages": messages,
+                "stream": True,
+                "max_tokens": 64,
+                "temperature": 0.1,  # low temperature for deterministic answers
+            },
+        ) as r:
             r.raise_for_status()
             text = ""
             for line in r.iter_lines():
@@ -86,26 +86,25 @@ def base_url():
 
 # ── Tests ─────────────────────────────────────────────────────────
 
+
 def test_model_remembers_name_from_history(base_url):
     """Model should answer 'Jetson' when the name was given in a prior turn."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": "Your name is Jetson. Remember that."},
+        {"role": "user", "content": "Your name is Jetson. Remember that."},
         {"role": "assistant", "content": "Understood, my name is Jetson."},
-        {"role": "user",   "content": "What is your name?"},
+        {"role": "user", "content": "What is your name?"},
     ]
     response = ask(messages)
     print(f"\n  Response with history: {response!r}")
-    assert "jetson" in response.lower(), (
-        f"Expected 'Jetson' in response, got: {response!r}"
-    )
+    assert "jetson" in response.lower(), f"Expected 'Jetson' in response, got: {response!r}"
 
 
 def test_model_forgets_name_without_history(base_url):
     """Without history, the model should NOT know the name 'Jetson'."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": "What is your name?"},
+        {"role": "user", "content": "What is your name?"},
     ]
     response = ask(messages)
     print(f"\n  Response without history: {response!r}")
@@ -116,12 +115,14 @@ def test_model_forgets_name_without_history(base_url):
 
 def test_clear_history_removes_file(base_url):
     """save_history + clear_history should create then remove the file."""
-    from app.history import save_history, has_history
+    from app.history import has_history, save_history
 
-    save_history([
-        {"role": "user", "content": "Your name is Jetson."},
-        {"role": "assistant", "content": "My name is Jetson."},
-    ])
+    save_history(
+        [
+            {"role": "user", "content": "Your name is Jetson."},
+            {"role": "assistant", "content": "My name is Jetson."},
+        ]
+    )
     assert has_history(), "History file should exist after save"
 
     clear_history()
@@ -129,6 +130,7 @@ def test_clear_history_removes_file(base_url):
 
 
 # ── Standalone runner ─────────────────────────────────────────────
+
 
 def main():
     if not _server_running():
@@ -144,30 +146,32 @@ def main():
     print("Step 1: Tell model its name is Jetson (via history), then ask...")
     messages_with = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": "Your name is Jetson. Remember that."},
+        {"role": "user", "content": "Your name is Jetson. Remember that."},
         {"role": "assistant", "content": "Understood, my name is Jetson."},
-        {"role": "user",   "content": "What is your name?"},
+        {"role": "user", "content": "What is your name?"},
     ]
     resp1 = ask(messages_with)
     ok1 = "jetson" in resp1.lower()
     print(f"  Response: {resp1!r}")
     print(f"  {'OK' if ok1 else 'FAIL'} — expected 'Jetson' in response")
-    passed += ok1; failed += not ok1
+    passed += ok1
+    failed += not ok1
 
     # Step 2: ask without history (simulates clear)
     print("\nStep 2: Ask again WITHOUT history (simulates clear)...")
     messages_without = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": "What is your name?"},
+        {"role": "user", "content": "What is your name?"},
     ]
     resp2 = ask(messages_without)
     ok2 = "jetson" not in resp2.lower()
     print(f"  Response: {resp2!r}")
     print(f"  {'OK' if ok2 else 'FAIL'} — expected 'Jetson' NOT in response")
-    passed += ok2; failed += not ok2
+    passed += ok2
+    failed += not ok2
 
     print(f"\n{'─' * 50}")
-    print(f"{'All passed' if not failed else f'{failed} FAILED'} ({passed}/{passed+failed})")
+    print(f"{'All passed' if not failed else f'{failed} FAILED'} ({passed}/{passed + failed})")
     sys.exit(1 if failed else 0)
 
 

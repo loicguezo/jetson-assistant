@@ -23,19 +23,16 @@ from app.manager import get_llama_server_port
 
 TTFT_THRESHOLD = 5.0  # seconds — fail if first token takes longer
 
-SYSTEM_PROMPT = (
-    "You are a helpful voice assistant. "
-    "Answer in one sentence. Be direct."
-)
+SYSTEM_PROMPT = "You are a helpful voice assistant. Answer in one sentence. Be direct."
 
 PLANETS = [
     ("Mercury", "How far away is Mercury from Earth?"),
-    ("Venus",   "How far away is Venus from Earth?"),
-    ("Moon",    "How far away is the Moon from Earth?"),
-    ("Mars",    "How far away is Mars from Earth?"),
+    ("Venus", "How far away is Venus from Earth?"),
+    ("Moon", "How far away is the Moon from Earth?"),
+    ("Mars", "How far away is Mars from Earth?"),
     ("Jupiter", "How far away is Jupiter from Earth?"),
-    ("Saturn",  "How far away is Saturn from Earth?"),
-    ("Uranus",  "How far away is Uranus from Earth?"),
+    ("Saturn", "How far away is Saturn from Earth?"),
+    ("Uranus", "How far away is Uranus from Earth?"),
     ("Neptune", "How far away is Neptune from Earth?"),
 ]
 
@@ -57,17 +54,21 @@ def measure_ttft(question: str, base_url: str) -> tuple[float, str]:
     """Return (ttft_seconds, first_token_text). Raises on connection error."""
     messages = [
         {"role": "system", "content": SYSTEM_PROMPT},
-        {"role": "user",   "content": question},
+        {"role": "user", "content": question},
     ]
     start = time.perf_counter()
     first_token = ""
     with httpx.Client(timeout=60.0) as client:
-        with client.stream("POST", f"{base_url}/v1/chat/completions", json={
-            "messages": messages,
-            "stream": True,
-            "max_tokens": 64,
-            "temperature": 0.7,
-        }) as r:
+        with client.stream(
+            "POST",
+            f"{base_url}/v1/chat/completions",
+            json={
+                "messages": messages,
+                "stream": True,
+                "max_tokens": 64,
+                "temperature": 0.7,
+            },
+        ) as r:
             r.raise_for_status()
             for line in r.iter_lines():
                 if not line or not line.strip().startswith("data:"):
@@ -90,6 +91,7 @@ def measure_ttft(question: str, base_url: str) -> tuple[float, str]:
 
 
 # ── pytest parametrized test ─────────────────────────────────────
+
 
 @pytest.fixture(scope="session")
 def base_url():
@@ -116,6 +118,7 @@ def test_ttft_planet(base_url, name, question):
 
 
 # ── standalone runner ─────────────────────────────────────────────
+
 
 def main():
     if not _server_running():
@@ -152,11 +155,13 @@ def main():
     if failed:
         times = [t for _, t in results if t is not None]
         print(f"FAILED ({len(failed)}/{len(PLANETS)}): {', '.join(failed)}")
-        print(f"avg={sum(times)/len(times):.2f}s  max={max(times):.2f}s")
+        print(f"avg={sum(times) / len(times):.2f}s  max={max(times):.2f}s")
         sys.exit(1)
     else:
         times = [t for _, t in results if t is not None]
-        print(f"All {len(PLANETS)} passed — avg {sum(times)/len(times):.2f}s  max {max(times):.2f}s")
+        print(
+            f"All {len(PLANETS)} passed — avg {sum(times) / len(times):.2f}s  max {max(times):.2f}s"
+        )
 
 
 if __name__ == "__main__":

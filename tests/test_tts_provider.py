@@ -15,6 +15,7 @@ def test_cuda_provider_available():
         import onnxruntime as ort
     except ImportError:
         import pytest
+
         pytest.skip("onnxruntime not installed")
 
     providers = ort.get_available_providers()
@@ -31,6 +32,7 @@ def test_cpu_provider_always_present():
         import onnxruntime as ort
     except ImportError:
         import pytest
+
         pytest.skip("onnxruntime not installed")
 
     assert "CPUExecutionProvider" in ort.get_available_providers()
@@ -39,12 +41,14 @@ def test_cpu_provider_always_present():
 def test_tts_worker_uses_cuda(tmp_path):
     """Spawn the TTS worker and verify it reports CUDAExecutionProvider."""
     import json
-    import subprocess
     import select
+    import subprocess
+
     import pytest
 
     try:
         import onnxruntime as ort
+
         if "CUDAExecutionProvider" not in ort.get_available_providers():
             pytest.skip("CUDAExecutionProvider not available on this system")
     except ImportError:

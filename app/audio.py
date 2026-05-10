@@ -17,8 +17,6 @@
 
 import subprocess
 import time
-from pathlib import Path
-from typing import Optional
 
 
 def kill_pulseaudio() -> bool:
@@ -36,7 +34,7 @@ def kill_pulseaudio() -> bool:
 def find_alsa_device(
     name_hint: str = "USB Audio",
     direction: str = "input",
-) -> Optional[tuple[int, int, str]]:
+) -> tuple[int, int, str] | None:
     """Find ALSA device by name substring. Returns (card, device, name) or None."""
     cmd = "arecord" if direction == "input" else "aplay"
     try:

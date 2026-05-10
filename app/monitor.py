@@ -20,7 +20,6 @@ import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional
 
 
 @dataclass
@@ -29,9 +28,9 @@ class SystemStats:
     ram_used_gb: float
     ram_total_gb: float
     ram_percent: float
-    gpu_percent: Optional[float] = None
-    gpu_temp_c: Optional[float] = None
-    gpu_freq_mhz: Optional[float] = None
+    gpu_percent: float | None = None
+    gpu_temp_c: float | None = None
+    gpu_freq_mhz: float | None = None
 
     # Legacy MB fields kept for backward compat with any callers
     @property
@@ -93,9 +92,11 @@ def format_stats_inline(s: SystemStats) -> str:
 
 # ── Internal helpers ──────────────────────────────────────────────
 
+
 def _cpu() -> float:
     try:
         import psutil
+
         return psutil.cpu_percent(interval=0.1)
     except ImportError:
         try:
@@ -111,6 +112,7 @@ def _ram() -> tuple[float, float, float]:
     """Returns (used_gb, total_gb, percent)."""
     try:
         import psutil
+
         m = psutil.virtual_memory()
         total = m.total / 1073741824
         used = m.used / 1073741824
@@ -129,7 +131,7 @@ def _ram() -> tuple[float, float, float]:
             return 0.0, 0.0, 0.0
 
 
-def _gpu_util() -> Optional[float]:
+def _gpu_util() -> float | None:
     for path in [
         "/sys/devices/platform/gpu.0/load",
         "/sys/devices/platform/17000000.gpu/load",
@@ -141,8 +143,14 @@ def _gpu_util() -> Optional[float]:
             continue
     try:
         r = subprocess.run(
-            ["nvidia-smi", "--query-gpu=utilization.gpu", "--format=csv,noheader,nounits"],
-            capture_output=True, text=True, timeout=2,
+            [
+                "nvidia-smi",
+                "--query-gpu=utilization.gpu",
+                "--format=csv,noheader,nounits",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
         )
         if r.returncode == 0:
             return float(r.stdout.strip())
@@ -152,7 +160,7 @@ def _gpu_util() -> Optional[float]:
 
 
 @lru_cache(maxsize=1)
-def _gpu_thermal_zone_path() -> Optional[str]:
+def _gpu_thermal_zone_path() -> str | None:
     """Find the sysfs path for the GPU thermal zone (cached — doesn't change)."""
     for zone in sorted(glob.glob("/sys/class/thermal/thermal_zone*/")):
         try:
@@ -164,7 +172,7 @@ def _gpu_thermal_zone_path() -> Optional[str]:
     return None
 
 
-def _gpu_temp() -> Optional[float]:
+def _gpu_temp() -> float | None:
     path = _gpu_thermal_zone_path()
     if not path:
         return None
@@ -175,7 +183,7 @@ def _gpu_temp() -> Optional[float]:
 
 
 @lru_cache(maxsize=1)
-def _gpu_freq_path() -> Optional[str]:
+def _gpu_freq_path() -> str | None:
     """Find the GPU devfreq cur_freq path (cached)."""
     for path in glob.glob("/sys/devices/platform/*/devfreq/*/cur_freq"):
         p = path.lower()
@@ -188,7 +196,7 @@ def _gpu_freq_path() -> Optional[str]:
     return None
 
 
-def _gpu_freq_mhz() -> Optional[float]:
+def _gpu_freq_mhz() -> float | None:
     path = _gpu_freq_path()
     if not path:
         return None
@@ -198,7 +206,7 @@ def _gpu_freq_mhz() -> Optional[float]:
         return None
 
 
-def get_power_mode() -> Optional[str]:
+def get_power_mode() -> str | None:
     """Return the current NVPModel power mode name, e.g. '25W'."""
     try:
         r = subprocess.run(["nvpmodel", "-q"], capture_output=True, text=True, timeout=3)

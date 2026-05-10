@@ -20,21 +20,22 @@
 # synthesis runs in a separate subprocess (app/tts_worker.py) that
 # communicates via JSON lines over stdin/stdout.
 
-import sys
-import json
-import wave
 import base64
+import json
 import subprocess
-from typing import Dict, Any, Optional
+import sys
+import wave
 from pathlib import Path
+from typing import Any
 
 import numpy as np
-
 
 VOICES_DIR = Path(__file__).resolve().parent.parent / "voices"
 
 KOKORO_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
-KOKORO_VOICES_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
+KOKORO_VOICES_URL = (
+    "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin"
+)
 
 
 def _download_kokoro_models_if_missing() -> bool:
@@ -75,7 +76,7 @@ def _download_kokoro_models_if_missing() -> bool:
         except Exception as e:
             print(f"  Download failed: {e}")
             if path.exists():
-                path.unlink()   # remove partial file so next run retries
+                path.unlink()  # remove partial file so next run retries
             return False
     return True
 
@@ -87,7 +88,7 @@ class KokoroTTS:
         self.voice = voice
         self.speed = speed
         self.lang = lang
-        self._proc: Optional[subprocess.Popen] = None
+        self._proc: subprocess.Popen | None = None
         self._sample_rate = 24000
         self.backend_name = "Kokoro"
         self.provider = "unknown"
@@ -102,11 +103,18 @@ class KokoroTTS:
         worker = Path(__file__).parent / "tts_worker.py"
         try:
             self._proc = subprocess.Popen(
-                [sys.executable, str(worker),
-                 "--model-dir", str(VOICES_DIR),
-                 "--voice", self.voice,
-                 "--speed", str(self.speed),
-                 "--lang", self.lang],
+                [
+                    sys.executable,
+                    str(worker),
+                    "--model-dir",
+                    str(VOICES_DIR),
+                    "--voice",
+                    self.voice,
+                    "--speed",
+                    str(self.speed),
+                    "--lang",
+                    self.lang,
+                ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,  # filtered below — see _stderr_filter thread
@@ -123,6 +131,7 @@ class KokoroTTS:
         # so ORT logs a benign "GPU device discovery failed" probe error even
         # when CUDAExecutionProvider is active and working correctly.
         import threading
+
         _SUPPRESS = [
             "DiscoverDevicesForPlatform",
             "device_discovery.cc",
@@ -148,6 +157,7 @@ class KokoroTTS:
         threading.Thread(target=_stderr_filter, daemon=True).start()
 
         import select
+
         ready = select.select([self._proc.stdout], [], [], 30.0)[0]
         if not ready:
             print("TTS worker startup timed out")
@@ -172,7 +182,7 @@ class KokoroTTS:
         print(f"TTS worker error: {resp.get('error', 'unknown')}")
         return False
 
-    def _send(self, req: dict) -> Optional[dict]:
+    def _send(self, req: dict) -> dict | None:
         if not self._proc or self._proc.poll() is not None:
             return None
         try:
@@ -185,17 +195,19 @@ class KokoroTTS:
         except (BrokenPipeError, json.JSONDecodeError, OSError):
             return None
 
-    def synthesize(self, text: str) -> Dict[str, Any]:
+    def synthesize(self, text: str) -> dict[str, Any]:
         if not text.strip():
             return {"audio": None, "error": "Empty"}
 
-        resp = self._send({
-            "cmd": "synthesize",
-            "text": text,
-            "voice": self.voice,
-            "speed": self.speed,
-            "lang": self.lang,
-        })
+        resp = self._send(
+            {
+                "cmd": "synthesize",
+                "text": text,
+                "voice": self.voice,
+                "speed": self.speed,
+                "lang": self.lang,
+            }
+        )
         if resp is None:
             return {"audio": None, "error": "Worker not running"}
         if "error" in resp:
@@ -232,7 +244,6 @@ class KokoroTTS:
             self._proc = None
 
 
-def create_tts(voice: str = "", speed: float = 1.0, lang: str = "en-us",
-               **_kwargs):
+def create_tts(voice: str = "", speed: float = 1.0, lang: str = "en-us", **_kwargs):
     """Create the TTS backend (Kokoro, subprocess-isolated)."""
     return KokoroTTS(voice=voice or "af_sarah", speed=speed, lang=lang)
