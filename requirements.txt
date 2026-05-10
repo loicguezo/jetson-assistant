@@ -22,6 +22,9 @@ faster-whisper>=1.0.0
 # TTS — Kokoro (GPU via ONNX Runtime, runs in subprocess for GPL isolation)
 kokoro-onnx>=0.4.0
 
+# Testing
+pytest>=7.0
+
 # Jetson-specific (install separately, see README):
 #   pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 #   pip install numpy==1.26.4

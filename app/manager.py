@@ -55,6 +55,11 @@ def _llama_port() -> int:
     return 8080
 
 
+def get_llama_server_port() -> int:
+    """Public accessor for the llama-server port (used by tests)."""
+    return _llama_port()
+
+
 def _save_pid(pid_file: Path, pid: int):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     pid_file.write_text(str(pid))
