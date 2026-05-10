@@ -22,12 +22,12 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 |-----------|---------|:---:|
 | **LLM** | llama.cpp (native, no Docker) | GPU (CUDA) |
 | **STT** | faster-whisper | GPU (CUDA) |
-| **TTS** | Kokoro ONNX | CPU |
+| **TTS** | Kokoro ONNX | GPU (CUDA) |
 | **VAD** | Silero VAD | CPU |
 
 llama.cpp is compiled directly on the Jetson — no Docker, no Python wrapper overhead. This keeps the memory footprint as small as possible on the shared 8 GB unified memory.
 
-Kokoro TTS runs in a **separate subprocess** to isolate its GPL-licensed dependencies (phonemizer, espeak-ng) from the CUDA process. On Jetson, the standard ONNX Runtime wheel does not include CUDA support for the TTS model, so synthesis runs on CPU (~3.7 s for a 3.6 s sentence).
+Kokoro TTS runs in a **separate subprocess** to isolate its GPL-licensed dependencies (phonemizer, espeak-ng) from the CUDA process. ONNX Runtime GPU (`onnxruntime-gpu` from the Jetson AI Lab index) enables `CUDAExecutionProvider`, reducing TTS RTF from ~1.17x to ~0.14x (8x faster).
 
 **Default model:** [Gemma 4 E4B Q4_K_M](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) (~4.6 GB) — Google's Gemma 4 Efficient 4B, quantized by unsloth. Any GGUF model placed in `~/models/` is picked up automatically by `./jetson-assistant start`.
 
@@ -134,9 +134,10 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 - [x] Memory optimizations (`optimize` command — reversible, per-item dialog)
 - [x] Bluetooth speaker support (`scripts/connect-bt-speaker.sh`)
 - [x] Language configurable via `settings.yaml` (`stt.language`, `tts.lang` + voice)
-- [ ] TTS GPU acceleration (Kokoro currently CPU-only on Jetson's ORT build)
+- [x] TTS GPU acceleration (Kokoro via `onnxruntime-gpu`, RTF ~0.14x)
+- [x] Multi-turn conversation memory (rolling window, persistent across sessions)
 - [ ] Auto-start as systemd service (boot without manual `./jetson-assistant start`)
-- [ ] Multi-turn conversation memory
+- [ ] Wake word detection (hands-free activation)
 - [ ] Wake word detection (hands-free activation)
 
 ## Further Reading

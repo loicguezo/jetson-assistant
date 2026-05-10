@@ -26,10 +26,10 @@ stt:
 
 tts:
   voice: "af_sarah"                   # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
-  speed: 1.2                          # slightly faster speech reduces RTF on CPU
+  speed: 1.0
   lang: "en-us"                       # kokoro language code
-  first_chunk_words: 8                # words before first TTS chunk is sent
-  max_chunk_words: 25                 # larger chunks = fewer gaps (Kokoro RTF >1.0 on CPU)
+  first_chunk_words: 3                # words before first TTS chunk is sent
+  max_chunk_words: 10                 # Kokoro CUDA RTF ~0.14x — small chunks are fine
 
 audio:
   sample_rate: 16000

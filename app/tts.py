@@ -119,9 +119,9 @@ class KokoroTTS:
 
         # Forward worker stderr, suppressing a harmless ORT startup warning:
         # ORT probes /sys/class/drm/card0/device/vendor (PCI GPU enumeration);
-        # on Jetson that file doesn't exist (SoC GPU, nvgpu driver, not PCIe),
-        # so ORT logs "GPU device discovery failed" and falls back to CPU —
-        # which is correct, Kokoro on CPU is fast enough for TTS.
+        # on Jetson that path doesn't exist (SoC GPU uses nvgpu, not PCIe),
+        # so ORT logs a benign "GPU device discovery failed" probe error even
+        # when CUDAExecutionProvider is active and working correctly.
         import threading
         _SUPPRESS = [
             "DiscoverDevicesForPlatform",

@@ -25,6 +25,8 @@ kokoro-onnx>=0.4.0
 # Testing
 pytest>=7.0
 
-# Jetson-specific (install separately, see README):
-#   pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
-#   pip install numpy==1.26.4
+# Jetson-specific — ONNX Runtime GPU (replaces the PyPI onnxruntime wheel):
+#   pip uninstall -y onnxruntime onnxruntime-gpu
+#   pip install --force-reinstall numpy==1.26.4 onnxruntime-gpu==1.23.0 \
+#     --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+# Both packages installed simultaneously causes the CPU-only wheel to win.

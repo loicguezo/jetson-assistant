@@ -72,7 +72,8 @@ The flags must include `-np 1` and `--reasoning off`. If they don't, the server 
 | "Using existing server" after stop | Orphaned process not tracked by PID file | `stop_llama_server()` now scans via `pgrep` and kills all |
 | KV-cache misses between turns | 3 parallel slots by default | `-np 1` in llama-server flags |
 | LLM no response / `ttft=None` | `max_tokens=128` hit limit → KV-cache corruption | Raised to 512 in `config/settings.yaml` |
-| Choppy TTS audio | Kokoro RTF > 1.0 on CPU for small chunks | `first_chunk_words: 8`, `max_chunk_words: 25`, `speed: 1.2` |
+| Choppy TTS audio | Kokoro RTF > 1.0 on CPU for small chunks | Fixed by CUDA (RTF 0.14x); `first_chunk_words: 3`, `max_chunk_words: 10` |
+| TTS stuck on CPU despite onnxruntime-gpu | Both `onnxruntime` (PyPI) AND `onnxruntime-gpu` (Jetson AI Lab) installed — CPU wheel wins | `pip uninstall -y onnxruntime onnxruntime-gpu` then reinstall only `onnxruntime-gpu` with `--force-reinstall numpy==1.26.4` |
 | No audio on BT speaker | `aplay` bypasses PulseAudio | Switched to `paplay` in `app/pipeline.py` |
 
 ## Active model

@@ -62,10 +62,18 @@ def main():
         sys.exit(1)
 
     try:
-        # On Jetson the standard ORT wheel only exposes CPUExecutionProvider
-        # (CUDAExecutionProvider is not built for ARM/Tegra in the PyPI wheel).
-        # Kokoro on CPU synthesises a sentence in ~3 s — fast enough for TTS.
+        import os
+        import onnxruntime as ort
         from kokoro_onnx import Kokoro
+
+        # Use CUDA if available (requires onnxruntime-gpu from Jetson AI Lab index).
+        # Falls back to CPU transparently if CUDAExecutionProvider is absent.
+        available = ort.get_available_providers()
+        if "CUDAExecutionProvider" in available:
+            os.environ["ONNX_PROVIDER"] = "CUDAExecutionProvider"
+        elif "ONNX_PROVIDER" not in os.environ:
+            os.environ["ONNX_PROVIDER"] = "CPUExecutionProvider"
+
         kokoro = Kokoro(str(model_path), str(voices_path))
         provider = kokoro.sess.get_providers()[0]
 
