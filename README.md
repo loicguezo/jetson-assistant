@@ -47,6 +47,8 @@ See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, b
 ```bash
 ./jetson-assistant setup            # first-time setup: build llama.cpp, download model, create venv
 ./jetson-assistant start            # model picker → llama-server → voice chat
+./jetson-assistant start --max-tokens 256 --temperature 0.5   # override LLM settings
+./jetson-assistant start --tts-speed 1.3 --first-chunk-words 4 --max-chunk-words 8  # override TTS
 ./jetson-assistant stop             # stop everything
 ./jetson-assistant status           # show what's running + memory usage
 ./jetson-assistant optimize         # apply memory optimizations (reversible, asks per item)
