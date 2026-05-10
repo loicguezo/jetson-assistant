@@ -16,7 +16,39 @@
 """STT — faster-whisper, GPU-accelerated Whisper on Jetson."""
 
 from typing import Dict, Any, Union
+from pathlib import Path
 import numpy as np
+
+
+def _preload_ctranslate2_lib() -> None:
+    """Pre-load libctranslate2.so.4 via ctypes before faster-whisper imports it.
+
+    The venv-bundled CTranslate2 build has RUNPATH=/usr/local/lib64:/usr/local/lib,
+    but the library lives in site-packages/ctranslate2/ and ~/.local/lib.
+    Pre-loading via ctypes makes the symbol available to the dynamic linker for
+    the subsequent `from ctranslate2._ext import ...` call regardless of how
+    LD_LIBRARY_PATH is set in the calling process.
+    """
+    import ctypes
+    candidates = [
+        Path(__file__).parent.parent / "venv/lib/python3.10/site-packages/ctranslate2/libctranslate2.so.4",
+        Path.home() / ".local/lib/libctranslate2.so.4",
+    ]
+    try:
+        ctypes.CDLL("libctranslate2.so.4")
+        return  # already on the linker path
+    except OSError:
+        pass
+    for path in candidates:
+        if path.exists():
+            try:
+                ctypes.CDLL(str(path))
+                return
+            except OSError:
+                continue
+
+
+_preload_ctranslate2_lib()
 
 
 class STT:
@@ -34,22 +66,25 @@ class STT:
         self.language = language
         self.beam_size = beam_size
         self._model = None
+        self.cpu_fallback = False  # set True if CUDA load failed and we fell back
 
     def load(self) -> bool:
         try:
             from faster_whisper import WhisperModel
-            self._model = WhisperModel(self.model_name, device=self.device, compute_type=self.compute_type)
+            self._model = WhisperModel(self.model_name, device=self.device,
+                                       compute_type=self.compute_type)
             return True
         except Exception as e:
-            print(f"faster-whisper load error: {e}")
+            print(f"faster-whisper CUDA load error: {e}")
             try:
                 from faster_whisper import WhisperModel
-                print("Falling back to CPU...")
-                self._model = WhisperModel(self.model_name, device="cpu", compute_type="int8")
+                self._model = WhisperModel(self.model_name, device="cpu",
+                                           compute_type="auto")
                 self.device = "cpu"
+                self.cpu_fallback = True
                 return True
             except Exception as e2:
-                print(f"CPU fallback failed: {e2}")
+                print(f"STT CPU fallback failed: {e2}")
                 return False
 
     def transcribe(self, audio: Union[np.ndarray, str], sample_rate: int = 16000) -> Dict[str, Any]:
@@ -75,7 +110,12 @@ class STT:
             return {"text": "", "error": str(e)}
 
     def get_info(self) -> Dict[str, Any]:
-        return {"backend": "faster-whisper", "model": self.model_name, "device": self.device}
+        return {
+            "backend": "faster-whisper",
+            "model": self.model_name,
+            "device": self.device,
+            "cpu_fallback": self.cpu_fallback,
+        }
 
     def health_check(self) -> bool:
         return self._model is not None

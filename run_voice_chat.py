@@ -75,10 +75,23 @@ def main():
         compute_type=config.stt.compute_type, language=config.stt.language,
         beam_size=config.stt.beam_size,
     )
-    stt.load()
+    if not stt.load():
+        console.print("[red]STT failed to load — cannot start voice chat.[/red]")
+        console.print("[dim]  Check that faster-whisper and CTranslate2 are installed (see SETUP.md).[/dim]")
+        return
     stt_delta = ram_used_gb() - ram_before_stt
-    console.print(f"  ✓ STT (faster-whisper, {config.stt.model})"
-                  f"[dim]  +{stt_delta:.1f}GB → {ram_used_gb():.1f}GB[/dim]")
+    if stt.cpu_fallback:
+        console.print(
+            f"  [yellow]⚠ STT (faster-whisper, {config.stt.model}, CPU — CUDA load failed!)"
+            f"[/yellow][dim]  +{stt_delta:.1f}GB → {ram_used_gb():.1f}GB[/dim]"
+        )
+        console.print("  [yellow]  Transcription will be 10–20× slower. "
+                      "Check CTranslate2 CUDA install (see SETUP.md).[/yellow]")
+    else:
+        console.print(
+            f"  ✓ STT (faster-whisper, {config.stt.model}, {stt.device.upper()})"
+            f"[dim]  +{stt_delta:.1f}GB → {ram_used_gb():.1f}GB[/dim]"
+        )
     console.print("    CUDA warmup...", end=" ")
     console.print(f"done ({warmup_stt(stt):.1f}s)")
 
