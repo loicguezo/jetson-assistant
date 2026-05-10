@@ -117,6 +117,8 @@ def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 4096) -> O
         "--host", "127.0.0.1",
         "-ngl", "99",
         "-c", str(ctx),
+        "-np", "1",           # single slot = full KV-cache reuse across turns
+        "--reasoning", "off", # disable thinking tokens (saves 15-28s TTFT on thinking models)
     ]
     try:
         with open(LLAMA_LOG_FILE, "w") as log:
