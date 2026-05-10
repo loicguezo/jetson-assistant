@@ -41,6 +41,12 @@ python tests/test_llm_latency.py            # TTFT benchmark (needs running serv
 
 Tests require llama-server to be running for integration tests; they auto-skip if not.
 
+**Unit test rule:** For every non-trivial change, write a small unit test before opening the PR.
+- Pure logic / sysfs reads → `pytest tests/` (no server needed)
+- LLM / TTS / STT behaviour → integration test with `pytest.skip` if server not running
+- Run the tests and confirm they pass before `git push`
+- Name the file `tests/test_<module>.py`, keep tests focused and fast (< 5s each)
+
 ## llama-server lifecycle
 
 ```bash

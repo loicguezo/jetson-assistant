@@ -578,9 +578,14 @@ def status():
     else:
         table.add_row("text-chat", "[dim]stopped[/dim]", "")
 
-    # memory
+    # system stats + power mode
+    from app.monitor import get_power_mode
     stats = get_system_stats()
-    table.add_row("system", "[cyan]info[/cyan]", format_stats(stats))
+    power = get_power_mode()
+    sys_detail = format_stats(stats)
+    if power:
+        sys_detail += f" | NVPModel {power}"
+    table.add_row("system", "[cyan]info[/cyan]", sys_detail)
 
     # optimization state
     state = load_state()

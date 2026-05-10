@@ -31,6 +31,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from app.config import Config
 from app.audio import find_alsa_device
 from app.history import load_history, save_history, clear_history
+from app.monitor import ram_used_gb
 from app.stt import STT
 from app.pipeline import (
     SAMPLE_RATE, MicRecorder, warmup_stt, vad_loop, stream_and_speak, load_silero,
@@ -68,13 +69,16 @@ def main():
     # ── Load models ──────────────────────────────────────────────
     console.print("\n[bold]Loading...[/bold]")
 
+    ram_before_stt = ram_used_gb()
     stt = STT(
         model=config.stt.model, device=config.stt.device,
         compute_type=config.stt.compute_type, language=config.stt.language,
         beam_size=config.stt.beam_size,
     )
     stt.load()
-    console.print(f"  ✓ STT (faster-whisper, {config.stt.model})")
+    stt_delta = ram_used_gb() - ram_before_stt
+    console.print(f"  ✓ STT (faster-whisper, {config.stt.model})"
+                  f"[dim]  +{stt_delta:.1f}GB → {ram_used_gb():.1f}GB[/dim]")
     console.print("    CUDA warmup...", end=" ")
     console.print(f"done ({warmup_stt(stt):.1f}s)")
 

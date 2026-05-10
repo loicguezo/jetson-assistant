@@ -15,33 +15,83 @@
 
 """System monitor — CPU, RAM, GPU stats for Jetson."""
 
+import glob
 import subprocess
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 
 @dataclass
 class SystemStats:
     cpu_percent: float
-    ram_used_mb: float
-    ram_total_mb: float
+    ram_used_gb: float
+    ram_total_gb: float
     ram_percent: float
     gpu_percent: Optional[float] = None
+    gpu_temp_c: Optional[float] = None
+    gpu_freq_mhz: Optional[float] = None
+
+    # Legacy MB fields kept for backward compat with any callers
+    @property
+    def ram_used_mb(self) -> float:
+        return self.ram_used_gb * 1024
+
+    @property
+    def ram_total_mb(self) -> float:
+        return self.ram_total_gb * 1024
 
 
 def get_system_stats() -> SystemStats:
-    cpu = _cpu()
     used, total, pct = _ram()
-    return SystemStats(cpu_percent=cpu, ram_used_mb=used, ram_total_mb=total, ram_percent=pct, gpu_percent=_gpu())
+    return SystemStats(
+        cpu_percent=_cpu(),
+        ram_used_gb=used,
+        ram_total_gb=total,
+        ram_percent=pct,
+        gpu_percent=_gpu_util(),
+        gpu_temp_c=_gpu_temp(),
+        gpu_freq_mhz=_gpu_freq_mhz(),
+    )
+
+
+def ram_used_gb() -> float:
+    """Quick RAM snapshot in GB — used for memory-delta tracking."""
+    used, _, _ = _ram()
+    return used
 
 
 def format_stats(s: SystemStats) -> str:
-    parts = [f"CPU: {s.cpu_percent:.1f}%", f"RAM: {s.ram_used_mb:.0f}/{s.ram_total_mb:.0f}MB ({s.ram_percent:.1f}%)"]
+    """Long format for the 'stats' command."""
+    parts = [
+        f"CPU {s.cpu_percent:.0f}%",
+        f"RAM {s.ram_used_gb:.1f}/{s.ram_total_gb:.1f}GB ({s.ram_percent:.0f}%)",
+    ]
+    gpu_parts = []
+    if s.gpu_temp_c is not None:
+        gpu_parts.append(f"{s.gpu_temp_c:.0f}°C")
+    if s.gpu_freq_mhz is not None:
+        gpu_parts.append(f"{s.gpu_freq_mhz:.0f}MHz")
     if s.gpu_percent is not None:
-        parts.append(f"GPU: {s.gpu_percent:.1f}%")
+        gpu_parts.append(f"{s.gpu_percent:.0f}%")
+    if gpu_parts:
+        parts.append("GPU " + " ".join(gpu_parts))
     return " | ".join(parts)
 
+
+def format_stats_inline(s: SystemStats) -> str:
+    """Compact one-liner for the per-response timing line."""
+    ram = f"RAM {s.ram_used_gb:.1f}/{s.ram_total_gb:.1f}GB"
+    gpu = ""
+    if s.gpu_temp_c is not None:
+        gpu = f" GPU {s.gpu_temp_c:.0f}°C"
+        if s.gpu_freq_mhz is not None:
+            gpu += f" {s.gpu_freq_mhz:.0f}MHz"
+    return ram + gpu
+
+
+# ── Internal helpers ──────────────────────────────────────────────
 
 def _cpu() -> float:
     try:
@@ -58,10 +108,13 @@ def _cpu() -> float:
 
 
 def _ram() -> tuple[float, float, float]:
+    """Returns (used_gb, total_gb, percent)."""
     try:
         import psutil
         m = psutil.virtual_memory()
-        return m.used / 1048576, m.total / 1048576, m.percent
+        total = m.total / 1073741824
+        used = m.used / 1073741824
+        return used, total, m.percent
     except ImportError:
         try:
             info = {}
@@ -69,37 +122,21 @@ def _ram() -> tuple[float, float, float]:
                 for line in f:
                     k, v = line.split()[:2]
                     info[k.rstrip(":")] = int(v)
-            total = info.get("MemTotal", 0) / 1024
-            used = total - info.get("MemAvailable", 0) / 1024
-            return used, total, (used / total * 100) if total else 0
+            total = info.get("MemTotal", 0) / 1048576
+            used = total - info.get("MemAvailable", 0) / 1048576
+            return used, total, (used / total * 100) if total else 0.0
         except Exception:
             return 0.0, 0.0, 0.0
 
 
-_GPU_SYSFS_PATHS = [
-    "/sys/devices/platform/gpu.0/load",
-    "/sys/devices/platform/17000000.gpu/load",
-    "/sys/devices/gpu.0/load",
-]
-
-
-@lru_cache(maxsize=1)
-def get_jetson_model() -> str:
-    """Return a clean Jetson model name like 'Jetson Orin Nano Super'."""
-    try:
-        with open("/proc/device-tree/model") as f:
-            raw = f.read().strip().rstrip("\x00")
-        name = raw.replace("NVIDIA ", "").replace(" Engineering Reference Developer Kit", "")
-        return name
-    except Exception:
-        return "Jetson"
-
-
-def _gpu() -> Optional[float]:
-    for path in _GPU_SYSFS_PATHS:
+def _gpu_util() -> Optional[float]:
+    for path in [
+        "/sys/devices/platform/gpu.0/load",
+        "/sys/devices/platform/17000000.gpu/load",
+        "/sys/devices/gpu.0/load",
+    ]:
         try:
-            with open(path) as f:
-                return int(f.read().strip()) / 10.0
+            return int(Path(path).read_text().strip()) / 10.0
         except Exception:
             continue
     try:
@@ -112,3 +149,72 @@ def _gpu() -> Optional[float]:
     except Exception:
         pass
     return None
+
+
+@lru_cache(maxsize=1)
+def _gpu_thermal_zone_path() -> Optional[str]:
+    """Find the sysfs path for the GPU thermal zone (cached — doesn't change)."""
+    for zone in sorted(glob.glob("/sys/class/thermal/thermal_zone*/")):
+        try:
+            zone_type = Path(zone + "type").read_text().strip().lower()
+            if "gpu" in zone_type:
+                return zone + "temp"
+        except Exception:
+            continue
+    return None
+
+
+def _gpu_temp() -> Optional[float]:
+    path = _gpu_thermal_zone_path()
+    if not path:
+        return None
+    try:
+        return int(Path(path).read_text().strip()) / 1000.0
+    except Exception:
+        return None
+
+
+@lru_cache(maxsize=1)
+def _gpu_freq_path() -> Optional[str]:
+    """Find the GPU devfreq cur_freq path (cached)."""
+    for path in glob.glob("/sys/devices/platform/*/devfreq/*/cur_freq"):
+        p = path.lower()
+        # Match the Orin GPU (ga10b) or anything labelled 'gpu'
+        if "ga10b" in p or ("/17000000.gpu/" in p):
+            return path
+    # Broader fallback: any devfreq path under a bus-gpu device
+    for path in glob.glob("/sys/devices/platform/bus@0/*.gpu/devfreq/*/cur_freq"):
+        return path
+    return None
+
+
+def _gpu_freq_mhz() -> Optional[float]:
+    path = _gpu_freq_path()
+    if not path:
+        return None
+    try:
+        return int(Path(path).read_text().strip()) / 1e6
+    except Exception:
+        return None
+
+
+def get_power_mode() -> Optional[str]:
+    """Return the current NVPModel power mode name, e.g. '25W'."""
+    try:
+        r = subprocess.run(["nvpmodel", "-q"], capture_output=True, text=True, timeout=3)
+        for line in r.stdout.splitlines():
+            if "Power Mode" in line:
+                return line.split(":")[-1].strip()
+    except Exception:
+        pass
+    return None
+
+
+@lru_cache(maxsize=1)
+def get_jetson_model() -> str:
+    try:
+        with open("/proc/device-tree/model") as f:
+            raw = f.read().strip().rstrip("\x00")
+        return raw.replace("NVIDIA ", "").replace(" Engineering Reference Developer Kit", "")
+    except Exception:
+        return "Jetson"

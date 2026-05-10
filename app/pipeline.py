@@ -545,6 +545,8 @@ def stream_and_speak(
 def load_llm(config, console: Console):
     """Load and connect the LLM from config. Prints status. Returns LLM instance."""
     from app.llm import LLM
+    from app.monitor import ram_used_gb
+    ram_before = ram_used_gb()
     llm = LLM(
         model=config.llm.model, base_url=config.llm.base_url,
         backend=config.llm.backend, max_tokens=config.llm.max_tokens,
@@ -554,17 +556,25 @@ def load_llm(config, console: Console):
     if not llm.load():
         console.print("[red]✗ LLM failed to connect[/red]")
         return None
-    console.print(f"  ✓ LLM ({llm.model})")
+    delta = ram_used_gb() - ram_before
+    total = ram_used_gb()
+    console.print(f"  ✓ LLM ({llm.model})"
+                  f"[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]")
     return llm
 
 
 def load_tts(config, console: Console):
     """Load TTS from config. Prints status. Returns TTS instance or None."""
     from app.tts import create_tts
+    from app.monitor import ram_used_gb
+    ram_before = ram_used_gb()
     tts = create_tts(voice=config.tts.voice, speed=config.tts.speed, lang=config.tts.lang)
     tts = tts if tts.load() else None
     if tts:
-        console.print(f"  ✓ TTS ({tts.backend_name}, {tts.voice})")
+        delta = ram_used_gb() - ram_before
+        total = ram_used_gb()
+        console.print(f"  ✓ TTS ({tts.backend_name}, {tts.voice})"
+                      f"[dim]  +{delta:.1f}GB → {total:.1f}GB[/dim]")
     else:
         console.print("  ⚠ TTS unavailable — responses will be text only")
     return tts
@@ -572,12 +582,14 @@ def load_tts(config, console: Console):
 
 def print_response_timing(console: Console, full_resp: str, dt_llm: float,
                           ttft: Optional[float], prefix: str = "  "):
-    """Print TTFT / tok/s timing line after a response."""
+    """Print TTFT / tok/s timing + live system stats after a response."""
+    from app.monitor import get_system_stats, format_stats_inline
+    stats = format_stats_inline(get_system_stats())
     if ttft is not None:
         toks = len(full_resp.split())
         console.print(
             f"{prefix}[dim]TTFT {ttft:.1f}s | LLM {dt_llm:.1f}s"
-            f" ~{toks / (dt_llm or 1):.0f}w/s[/dim]"
+            f" ~{toks / (dt_llm or 1):.0f}w/s | {stats}[/dim]"
         )
     else:
-        console.print(f"{prefix}[dim]LLM no response[/dim]")
+        console.print(f"{prefix}[dim]LLM no response | {stats}[/dim]")
