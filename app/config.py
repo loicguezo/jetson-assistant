@@ -95,6 +95,7 @@ class Config:
             config_path = Path(__file__).parent.parent / "config" / "settings.yaml"
         config = cls()
         if not os.path.exists(config_path):
+            config._apply_env_overrides()
             return config
         try:
             with open(config_path) as f:
@@ -106,4 +107,18 @@ class Config:
                         setattr(section_obj, k, v)
         except Exception as e:
             print(f"Error loading config: {e}")
+        config._apply_env_overrides()
         return config
+
+    def _apply_env_overrides(self):
+        """Override config values from JA_* environment variables (set by CLI flags)."""
+        if v := os.environ.get("JA_MAX_TOKENS"):
+            self.llm.max_tokens = int(v)
+        if v := os.environ.get("JA_TEMPERATURE"):
+            self.llm.temperature = float(v)
+        if v := os.environ.get("JA_TTS_SPEED"):
+            self.tts.speed = float(v)
+        if v := os.environ.get("JA_FIRST_CHUNK_WORDS"):
+            self.tts.first_chunk_words = int(v)
+        if v := os.environ.get("JA_MAX_CHUNK_WORDS"):
+            self.tts.max_chunk_words = int(v)

@@ -436,6 +436,15 @@ def start(
         "-t",
         help="Text mode: type your messages, no microphone required",
     ),
+    max_tokens: int = typer.Option(None, "--max-tokens", help="LLM max tokens per response"),
+    temperature: float = typer.Option(None, "--temperature", help="LLM sampling temperature"),
+    tts_speed: float = typer.Option(None, "--tts-speed", help="TTS speech speed (default 1.0)"),
+    first_chunk_words: int = typer.Option(
+        None, "--first-chunk-words", help="Words before first TTS chunk is sent"
+    ),
+    max_chunk_words: int = typer.Option(
+        None, "--max-chunk-words", help="Max words per TTS chunk after the first"
+    ),
 ):
     """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
     mode_label = "Text Assistant" if text else "Voice Assistant"
@@ -483,7 +492,19 @@ def start(
         raise typer.Exit(1)
 
     console.print(f"\n  Model: [green]{model_path.name}[/green]")
-    console.print(f"  Context: {ctx} tokens  |  Port: {port}")
+    overrides = []
+    if max_tokens is not None:
+        overrides.append(f"max-tokens={max_tokens}")
+    if temperature is not None:
+        overrides.append(f"temperature={temperature}")
+    if tts_speed is not None:
+        overrides.append(f"tts-speed={tts_speed}")
+    if first_chunk_words is not None:
+        overrides.append(f"first-chunk-words={first_chunk_words}")
+    if max_chunk_words is not None:
+        overrides.append(f"max-chunk-words={max_chunk_words}")
+    override_str = f"  |  overrides: {', '.join(overrides)}" if overrides else ""
+    console.print(f"  Context: {ctx} tokens  |  Port: {port}{override_str}")
 
     # ── Check if server already running ───────────────────────
     if is_llama_server_running():
@@ -525,8 +546,22 @@ def start(
         console.print("\n[bold green]Starting voice chat...[/bold green]\n")
         chat_script = Path(__file__).parent / "run_voice_chat.py"
 
+    import os
+
+    chat_env = os.environ.copy()
+    if max_tokens is not None:
+        chat_env["JA_MAX_TOKENS"] = str(max_tokens)
+    if temperature is not None:
+        chat_env["JA_TEMPERATURE"] = str(temperature)
+    if tts_speed is not None:
+        chat_env["JA_TTS_SPEED"] = str(tts_speed)
+    if first_chunk_words is not None:
+        chat_env["JA_FIRST_CHUNK_WORDS"] = str(first_chunk_words)
+    if max_chunk_words is not None:
+        chat_env["JA_MAX_CHUNK_WORDS"] = str(max_chunk_words)
+
     try:
-        result = subprocess.run([sys.executable, str(chat_script)])
+        result = subprocess.run([sys.executable, str(chat_script)], env=chat_env)
         if result.returncode not in (0, -2):  # -2 = SIGINT (Ctrl+C), expected
             console.print(f"\n[yellow]⚠ Chat exited with code {result.returncode}[/yellow]")
     except KeyboardInterrupt:
