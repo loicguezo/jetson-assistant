@@ -25,9 +25,11 @@ stt:
   beam_size: 1                        # 1=greedy (fast), 5=beam (quality)
 
 tts:
-  voice: "af_sarah"                   # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
+  backend: "kokoro"                   # kokoro (default, GPU, English) or piper (CPU, multilingual incl. German)
+  voice: "af_sarah"                   # kokoro voice — af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
   speed: 1.0
-  lang: "en-us"                       # kokoro language code
+  lang: "en-us"                       # kokoro language code (ignored when backend=piper)
+  piper_model: "en_US-lessac-medium"  # piper model name — e.g. de_DE-thorsten-medium for German
   first_chunk_words: 3                # words before first TTS chunk is sent
   max_chunk_words: 5                  # must be ≤ 2×first_chunk_words for gap-free audio (LLM ~5 w/s, speech ~2.5 w/s)
 

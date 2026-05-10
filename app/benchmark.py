@@ -28,7 +28,13 @@ def run_benchmark(cfg, start_server_fn, stop_server_fn, is_running_fn, wait_fn, 
     console.print("[bold]TTS[/bold]  synthesising fixed sentence...")
     console.print(f'  [dim]"{BENCH_TTS_TEXT}"[/dim]')
 
-    tts = create_tts(voice=cfg.tts.voice, speed=cfg.tts.speed, lang=cfg.tts.lang)
+    tts = create_tts(
+        backend=cfg.tts.backend,
+        voice=cfg.tts.voice,
+        speed=cfg.tts.speed,
+        lang=cfg.tts.lang,
+        piper_model=cfg.tts.piper_model,
+    )
     if not tts.load():
         console.print("  [red]✗ TTS failed to load[/red]")
         return None
@@ -143,11 +149,12 @@ def run_benchmark(cfg, start_server_fn, stop_server_fn, is_running_fn, wait_fn, 
     table.add_column("Time", justify="right")
     table.add_column("Notes", style="dim")
 
-    table.add_row(
-        "TTS (synthesis)",
-        f"{timings['tts']:.2f}s",
-        f"{duration_s:.1f}s audio, {cfg.tts.voice}",
+    tts_note = (
+        f"{duration_s:.1f}s audio, {cfg.tts.piper_model} (Piper)"
+        if cfg.tts.backend == "piper"
+        else f"{duration_s:.1f}s audio, {cfg.tts.voice} (Kokoro)"
     )
+    table.add_row("TTS (synthesis)", f"{timings['tts']:.2f}s", tts_note)
     table.add_row(
         "STT (transcribe)",
         f"{timings['stt']:.2f}s",

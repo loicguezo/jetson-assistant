@@ -703,7 +703,13 @@ def load_tts(config, console: Console):
     from app.tts import create_tts
 
     ram_before = ram_used_gb()
-    tts = create_tts(voice=config.tts.voice, speed=config.tts.speed, lang=config.tts.lang)
+    tts = create_tts(
+        backend=config.tts.backend,
+        voice=config.tts.voice,
+        speed=config.tts.speed,
+        lang=config.tts.lang,
+        piper_model=config.tts.piper_model,
+    )
     tts = tts if tts.load() else None
     if tts:
         delta = ram_used_gb() - ram_before

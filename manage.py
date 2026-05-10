@@ -445,6 +445,12 @@ def start(
     max_chunk_words: int = typer.Option(
         None, "--max-chunk-words", help="Max words per TTS chunk after the first"
     ),
+    tts_backend: str = typer.Option(
+        None, "--tts-backend", help="TTS backend: kokoro (default) or piper"
+    ),
+    piper_model: str = typer.Option(
+        None, "--piper-model", help="Piper voice model (e.g. de_DE-thorsten-medium)"
+    ),
 ):
     """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
     mode_label = "Text Assistant" if text else "Voice Assistant"
@@ -503,6 +509,10 @@ def start(
         overrides.append(f"first-chunk-words={first_chunk_words}")
     if max_chunk_words is not None:
         overrides.append(f"max-chunk-words={max_chunk_words}")
+    if tts_backend is not None:
+        overrides.append(f"tts-backend={tts_backend}")
+    if piper_model is not None:
+        overrides.append(f"piper-model={piper_model}")
     override_str = f"  |  overrides: {', '.join(overrides)}" if overrides else ""
     console.print(f"  Context: {ctx} tokens  |  Port: {port}{override_str}")
 
@@ -559,6 +569,10 @@ def start(
         chat_env["JA_FIRST_CHUNK_WORDS"] = str(first_chunk_words)
     if max_chunk_words is not None:
         chat_env["JA_MAX_CHUNK_WORDS"] = str(max_chunk_words)
+    if tts_backend is not None:
+        chat_env["JA_TTS_BACKEND"] = tts_backend
+    if piper_model is not None:
+        chat_env["JA_PIPER_MODEL"] = piper_model
 
     try:
         result = subprocess.run([sys.executable, str(chat_script)], env=chat_env)
@@ -934,8 +948,17 @@ def test(
 
 
 @app.command()
-def benchmark():
+def benchmark(
+    tts_backend: str = typer.Option(
+        None, "--tts-backend", help="TTS backend to benchmark: kokoro or piper"
+    ),
+    piper_model: str = typer.Option(
+        None, "--piper-model", help="Piper voice model (e.g. de_DE-thorsten-medium)"
+    ),
+):
     """Benchmark TTS → STT → LLM with fixed inputs. No microphone required."""
+    import os
+
     from app.benchmark import run_benchmark
     from app.config import Config
 
@@ -947,8 +970,20 @@ def benchmark():
         )
     )
 
+    bench_env = os.environ.copy()
+    if tts_backend is not None:
+        bench_env["JA_TTS_BACKEND"] = tts_backend
+    if piper_model is not None:
+        bench_env["JA_PIPER_MODEL"] = piper_model
+
+    cfg = Config.load()
+    if tts_backend is not None:
+        cfg.tts.backend = tts_backend
+    if piper_model is not None:
+        cfg.tts.piper_model = piper_model
+
     run_benchmark(
-        cfg=Config.load(),
+        cfg=cfg,
         start_server_fn=start_llama_server,
         stop_server_fn=stop_llama_server,
         is_running_fn=is_llama_server_running,

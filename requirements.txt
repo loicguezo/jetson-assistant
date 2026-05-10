@@ -22,6 +22,12 @@ faster-whisper>=1.0.0
 # TTS — Kokoro (GPU via ONNX Runtime, runs in subprocess for GPL isolation)
 kokoro-onnx>=0.4.0
 
+# TTS — Piper (OHF-Voice/piper1-gpl, CPU, multilingual incl. German)
+# Install WITHOUT deps to avoid overwriting onnxruntime-gpu with CPU-only wheel:
+#   pip install piper-tts --no-deps && pip install pathvalidate
+# Voice models download automatically on first use (voices/piper/).
+pathvalidate>=3.0
+
 # Testing
 pytest>=7.0
 

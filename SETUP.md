@@ -239,7 +239,9 @@ kokoro-onnx: OK
 
 ## Part 4: TTS Voices
 
-Kokoro TTS downloads automatically on first run (~340 MB). To pre-download for offline use:
+### Kokoro (default — English, GPU)
+
+Kokoro downloads automatically on first run (~340 MB). To pre-download:
 
 ```bash
 mkdir -p ~/jetson-assistant/voices
@@ -249,7 +251,36 @@ wget -P ~/jetson-assistant/voices/ \
   https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/voices-v1.0.bin
 ```
 
-Available voices: `af_sarah`, `af_bella`, `am_adam`, `bf_emma`, `bm_george` (configure in `settings.yaml`).
+Available voices: `af_sarah`, `af_bella`, `am_adam`, `bf_emma`, `bm_george` (configure `tts.voice` in `settings.yaml`).
+
+### Piper (multilingual — German, French, etc., CPU)
+
+Piper TTS runs as a self-contained binary. It downloads automatically on first use, or manually:
+
+```bash
+# The assistant downloads piper and voice models automatically on first run with --tts-backend piper.
+# To trigger download explicitly:
+source venv/bin/activate
+python3 -c "from app.tts import download_piper_if_missing; download_piper_if_missing('de_DE-thorsten-medium')"
+```
+
+To use Piper, set in `config/settings.yaml`:
+```yaml
+tts:
+  backend: piper
+  piper_model: de_DE-thorsten-medium   # or: de_DE-kerstin-low, en_US-lessac-medium, en_US-ryan-high
+```
+
+Or via CLI (per session, without changing settings.yaml):
+```bash
+./jetson-assistant start --tts-backend piper --piper-model de_DE-thorsten-medium
+```
+
+To compare TTS backends with the same benchmark input:
+```bash
+./jetson-assistant benchmark --tts-backend kokoro
+./jetson-assistant benchmark --tts-backend piper --piper-model de_DE-thorsten-medium
+```
 
 ---
 

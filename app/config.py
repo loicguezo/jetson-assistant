@@ -45,11 +45,13 @@ class STTConfig:
 
 @dataclass
 class TTSConfig:
+    backend: str = "kokoro"  # kokoro or piper
     voice: str = "af_sarah"
     speed: float = 1.0
     lang: str = "en-us"
     first_chunk_words: int = 3
     max_chunk_words: int = 8
+    piper_model: str = "en_US-lessac-medium"
 
 
 @dataclass
@@ -122,3 +124,7 @@ class Config:
             self.tts.first_chunk_words = int(v)
         if v := os.environ.get("JA_MAX_CHUNK_WORDS"):
             self.tts.max_chunk_words = int(v)
+        if v := os.environ.get("JA_TTS_BACKEND"):
+            self.tts.backend = v
+        if v := os.environ.get("JA_PIPER_MODEL"):
+            self.tts.piper_model = v

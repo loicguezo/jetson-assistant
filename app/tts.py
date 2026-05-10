@@ -31,6 +31,9 @@ from typing import Any
 import numpy as np
 
 VOICES_DIR = Path(__file__).resolve().parent.parent / "voices"
+PIPER_DIR = VOICES_DIR / "piper"
+
+PIPER_VOICES_BASE = "https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0"
 
 KOKORO_MODEL_URL = "https://github.com/thewh1teagle/kokoro-onnx/releases/download/model-files-v1.0/kokoro-v1.0.onnx"
 KOKORO_VOICES_URL = (
@@ -244,6 +247,164 @@ class KokoroTTS:
             self._proc = None
 
 
-def create_tts(voice: str = "", speed: float = 1.0, lang: str = "en-us", **_kwargs):
-    """Create the TTS backend (Kokoro, subprocess-isolated)."""
+def _download_file(url: str, path: Path, label: str) -> bool:
+    """Download a single file with progress. Returns True on success."""
+    try:
+        import httpx
+    except ImportError:
+        print(f"Install httpx to auto-download {label} (pip install httpx)")
+        return False
+    try:
+        with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as r:
+            r.raise_for_status()
+            total = int(r.headers.get("content-length", 0)) or None
+            done = 0
+            with open(path, "wb") as f:
+                for chunk in r.iter_bytes(chunk_size=262144):
+                    f.write(chunk)
+                    done += len(chunk)
+                    if total:
+                        sys.stdout.write(f"\r  {label}: {100 * done / total:.0f}%")
+                        sys.stdout.flush()
+        if total:
+            print()
+        print(f"  Saved {path}")
+        return True
+    except Exception as e:
+        print(f"  Download failed: {e}")
+        if path.exists():
+            path.unlink()
+        return False
+
+
+def _parse_piper_model(model_name: str) -> tuple[str, str, str, str]:
+    """Parse 'de_DE-thorsten-medium' into (lang, locale, speaker, quality)."""
+    parts = model_name.split("-")
+    locale = parts[0]  # e.g. de_DE
+    quality = parts[-1]  # low / medium / high
+    speaker = "-".join(parts[1:-1])
+    lang = locale.split("_")[0]
+    return lang, locale, speaker, quality
+
+
+def download_piper_model_if_missing(model_name: str = "en_US-lessac-medium") -> bool:
+    """Download Piper voice model (.onnx + .onnx.json) to voices/piper/ if not present."""
+    PIPER_DIR.mkdir(parents=True, exist_ok=True)
+    model_onnx = PIPER_DIR / f"{model_name}.onnx"
+    model_json = PIPER_DIR / f"{model_name}.onnx.json"
+    if model_onnx.exists() and model_json.exists():
+        return True
+    lang, locale, speaker, quality = _parse_piper_model(model_name)
+    base = f"{PIPER_VOICES_BASE}/{lang}/{locale}/{speaker}/{quality}/{model_name}"
+    print(f"Downloading Piper voice model {model_name}...")
+    if not _download_file(f"{base}.onnx", model_onnx, f"{model_name}.onnx"):
+        return False
+    return _download_file(f"{base}.onnx.json", model_json, f"{model_name}.onnx.json")
+
+
+class PiperTTS:
+    """Piper TTS via the piper-tts Python package (OHF-Voice/piper1-gpl).
+
+    Uses the Python API directly — no subprocess, no binary download.
+    Installed with --no-deps to avoid overwriting onnxruntime-gpu with the
+    CPU-only onnxruntime wheel that piper-tts declares as a dependency.
+    Speed is controlled via SynthesisConfig.length_scale (inverse of speed).
+    """
+
+    def __init__(self, model: str = "en_US-lessac-medium", speed: float = 1.0):
+        self.model = model
+        self.speed = speed
+        self.voice = model
+        self.backend_name = "Piper"
+        self.provider = "CPU"
+        self._piper_voice = None
+        self._sample_rate = 22050
+
+    def load(self) -> bool:
+        try:
+            from piper.voice import PiperVoice
+        except ImportError:
+            print(
+                "piper-tts not installed. Run:\n"
+                "  pip install piper-tts --no-deps && pip install pathvalidate"
+            )
+            return False
+
+        if not download_piper_model_if_missing(self.model):
+            return False
+
+        model_path = PIPER_DIR / f"{self.model}.onnx"
+        config_path = PIPER_DIR / f"{self.model}.onnx.json"
+        try:
+            import onnxruntime as ort
+
+            use_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
+            self._piper_voice = PiperVoice.load(
+                model_path, config_path=config_path, use_cuda=use_cuda
+            )
+            self._sample_rate = self._piper_voice.config.sample_rate
+            provider = "CUDA" if use_cuda else "CPU"
+            self.provider = provider
+            print(f"Piper TTS loaded — model: {self.model}, {self._sample_rate} Hz, {provider}")
+        except Exception as e:
+            print(f"Piper load failed: {e}")
+            return False
+
+        # Quick sanity check
+        result = self.synthesize("test")
+        if result.get("audio") is None:
+            print(f"Piper self-test failed: {result.get('error')}")
+            return False
+
+        return True
+
+    def synthesize(self, text: str) -> dict[str, Any]:
+        if not text.strip():
+            return {"audio": None, "error": "Empty"}
+        if self._piper_voice is None:
+            return {"audio": None, "error": "Not loaded"}
+
+        try:
+            from piper.config import SynthesisConfig
+
+            syn_cfg = SynthesisConfig(length_scale=1.0 / max(self.speed, 0.1))
+            chunks = list(self._piper_voice.synthesize(text, syn_config=syn_cfg))
+            if not chunks:
+                return {"audio": None, "error": "Piper produced no audio"}
+            # Concatenate float32 chunks and convert to int16
+            audio_f32 = np.concatenate([c.audio_float_array for c in chunks])
+            audio_i16 = np.clip(audio_f32 * 32767, -32768, 32767).astype(np.int16)
+            return {"audio": audio_i16, "sample_rate": self._sample_rate}
+        except Exception as e:
+            return {"audio": None, "error": str(e)}
+
+    def synthesize_to_file(self, text: str, path: str) -> bool:
+        r = self.synthesize(text)
+        if r.get("audio") is None:
+            return False
+        with wave.open(path, "wb") as wf:
+            wf.setnchannels(1)
+            wf.setsampwidth(2)
+            wf.setframerate(r["sample_rate"])
+            wf.writeframes(r["audio"].tobytes())
+        return True
+
+    def health_check(self) -> bool:
+        return self._piper_voice is not None
+
+    def unload(self):
+        self._piper_voice = None
+
+
+def create_tts(
+    backend: str = "kokoro",
+    voice: str = "",
+    speed: float = 1.0,
+    lang: str = "en-us",
+    piper_model: str = "",
+    **_kwargs,
+):
+    """Create a TTS backend. backend='kokoro' (default) or 'piper'."""
+    if backend == "piper":
+        return PiperTTS(model=piper_model or "en_US-lessac-medium", speed=speed)
     return KokoroTTS(voice=voice or "af_sarah", speed=speed, lang=lang)

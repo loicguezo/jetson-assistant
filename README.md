@@ -22,8 +22,10 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 |-----------|---------|:---:|
 | **LLM** | llama.cpp (native, no Docker) | GPU (CUDA) |
 | **STT** | faster-whisper | GPU (CUDA) |
-| **TTS** | Kokoro ONNX | GPU (CUDA) |
+| **TTS** | Kokoro ONNX *(default)* or Piper | GPU (CUDA) |
 | **VAD** | Silero VAD | CPU |
+
+**TTS backends:** Kokoro (English, CUDA via `onnxruntime-gpu`) and Piper (multilingual, CUDA auto-detected via the same `onnxruntime-gpu`) are both supported and switchable via config or CLI flag.
 
 llama.cpp is compiled directly on the Jetson — no Docker, no Python wrapper overhead. This keeps the memory footprint as small as possible on the shared 8 GB unified memory.
 
@@ -84,7 +86,10 @@ All settings live in `config/settings.yaml`:
 
 **Selecting your microphone:** set `audio.input_device` in `settings.yaml` to a substring of your device name (check `arecord -l` or run `./jetson-assistant test --mic`), or leave it `null` to auto-detect.
 
-**Language:** set `stt.language` (e.g. `"de"`, `"fr"`) and use a matching Kokoro voice + `tts.lang` code (e.g. `"de"`, `"fr-fr"`). Switch the STT model from `small.en` to `small` for multilingual transcription.
+**Changing language:** Switch to Piper TTS for multilingual support. Browse available voices at [rhasspy.github.io/piper-samples](https://rhasspy.github.io/piper-samples/), pick a voice, and set `tts.backend: piper` + `tts.piper_model: <model-name>` in `settings.yaml`. Also set `stt.language` to your target language and switch `stt.model` from `small.en` to `small` for multilingual transcription. Or use CLI flags per session:
+```bash
+./jetson-assistant start --tts-backend piper --piper-model de_DE-thorsten-high
+```
 
 **Bluetooth speaker:** use `scripts/connect-bt-speaker.sh` to pair and set a Bluetooth speaker as the default PulseAudio sink.
 
@@ -121,12 +126,29 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 
 | Component | Time | Model |
 |-----------|-----:|-------|
-| TTS (synthesis) | ~0.5 s | Kokoro `af_sarah`, CUDA (RTF 0.14×) |
+| TTS (synthesis) | ~0.5 s | Kokoro `af_sarah`, CUDA (RTF 0.16×) |
 | STT (transcribe) | 1.19 s | faster-whisper `small.en`, CUDA |
 | LLM (time to first token) | 0.4–0.9 s | Gemma 4 E4B Q4_K_M (`--reasoning off`) |
 | LLM (full response) | 2–4 s | Gemma 4 E4B Q4_K_M |
 
-> Numbers updated after enabling CUDA for TTS (`onnxruntime-gpu`) and adding `--reasoning off -np 1` to llama-server. Run `./jetson-assistant benchmark` to get exact values on your setup.
+### TTS Backend Comparison
+
+Both backends use CUDA via `onnxruntime-gpu`. Measured on Orin Nano 8GB with a ~3.6 s sentence (3 warm runs averaged).
+
+| Backend | Voice | Language | Avg synthesis | RTF (warm) |
+|---------|-------|----------|:-------------:|:----------:|
+| **Kokoro** *(default)* | `af_sarah` | English | ~0.56 s | 0.16× |
+| **Piper** | `de_DE-thorsten-high` | German | ~0.47 s | 0.13× |
+
+Piper synthesises in-process (no subprocess IPC overhead), which reduces latency slightly. Kokoro runs in a subprocess for GPL isolation — that adds one JSON round-trip per utterance.
+
+Run your own comparison:
+```bash
+./jetson-assistant benchmark --tts-backend kokoro
+./jetson-assistant benchmark --tts-backend piper --piper-model de_DE-thorsten-high
+```
+
+> RTF = synthesis time ÷ audio duration. RTF < 1.0 means faster than real-time. Run `./jetson-assistant benchmark` to get exact values on your setup.
 
 ## Roadmap
 
@@ -137,8 +159,9 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 - [x] Memory optimizations (`optimize` command — reversible, per-item dialog)
 - [x] Bluetooth speaker support (`scripts/connect-bt-speaker.sh`)
 - [x] Language configurable via `settings.yaml` (`stt.language`, `tts.lang` + voice)
-- [x] TTS GPU acceleration (Kokoro via `onnxruntime-gpu`, RTF ~0.14x)
+- [x] TTS GPU acceleration (Kokoro + Piper both via `onnxruntime-gpu`, RTF ~0.13–0.16×)
 - [x] Multi-turn conversation memory (rolling window, persistent across sessions)
+- [x] Dual TTS backends — Kokoro (English) + Piper (multilingual), both CUDA-accelerated
 - [ ] Auto-start as systemd service (boot without manual `./jetson-assistant start`)
 - [ ] Wake word detection (hands-free activation)
 
