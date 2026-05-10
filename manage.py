@@ -340,10 +340,13 @@ def start(
                                      help="Keep llama-server running after voice chat exits"),
     server_only: bool = typer.Option(False, "--server-only",
                                      help="Start llama-server only, skip voice chat"),
+    text: bool = typer.Option(False, "--text", "-t",
+                              help="Text mode: type your messages, no microphone required"),
 ):
-    """Start the voice assistant: pick a model, launch llama-server, start voice chat."""
+    """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
+    mode_label = "Text Assistant" if text else "Voice Assistant"
     console.print(Panel.fit(
-        "[bold cyan]Jetson Voice Assistant[/bold cyan]",
+        f"[bold cyan]Jetson {mode_label}[/bold cyan]",
         border_style="cyan",
     ))
 
@@ -402,19 +405,24 @@ def start(
     else:
         _launch_server(model_path, port, ctx)
 
-    # ── Start voice chat ───────────────────────────────────────
+    # ── Start chat ────────────────────────────────────────────
     if server_only:
         console.print("\n  [green]llama-server is running.[/green]  "
-                      "[dim](--server-only: skipping voice chat)[/dim]")
+                      "[dim](--server-only: skipping chat)[/dim]")
         console.print("  Stop with: [dim]./jetson-assistant stop[/dim]")
         return
 
-    console.print("\n[bold green]Starting voice chat...[/bold green]\n")
-    voice_chat = Path(__file__).parent / "run_voice_chat.py"
+    if text:
+        console.print("\n[bold green]Starting text chat...[/bold green]\n")
+        chat_script = Path(__file__).parent / "run_text_chat.py"
+    else:
+        console.print("\n[bold green]Starting voice chat...[/bold green]\n")
+        chat_script = Path(__file__).parent / "run_voice_chat.py"
+
     try:
-        result = subprocess.run([sys.executable, str(voice_chat)])
+        result = subprocess.run([sys.executable, str(chat_script)])
         if result.returncode not in (0, -2):   # -2 = SIGINT (Ctrl+C), expected
-            console.print(f"\n[yellow]⚠ Voice chat exited with code {result.returncode}[/yellow]")
+            console.print(f"\n[yellow]⚠ Chat exited with code {result.returncode}[/yellow]")
     except KeyboardInterrupt:
         pass
 
@@ -459,14 +467,11 @@ def stop():
     else:
         console.print("  [dim]llama-server not running[/dim]")
 
-    # kill any lingering voice chat processes
-    result = subprocess.run(
-        ["pkill", "-f", "run_voice_chat.py"],
-        capture_output=True,
-    )
-    if result.returncode == 0:
-        console.print("  Stopped voice chat process.")
-        stopped.append("voice-chat")
+    for script, label in [("run_voice_chat.py", "voice-chat"), ("run_text_chat.py", "text-chat")]:
+        result = subprocess.run(["pkill", "-f", script], capture_output=True)
+        if result.returncode == 0:
+            console.print(f"  Stopped {label} process.")
+            stopped.append(label)
 
     if not stopped:
         console.print("  Nothing was running.")
@@ -494,14 +499,20 @@ def status():
         table.add_row("llama-server", "[red]stopped[/red]", "")
 
     # voice chat
-    result = subprocess.run(
-        ["pgrep", "-f", "run_voice_chat.py"], capture_output=True
-    )
+    result = subprocess.run(["pgrep", "-f", "run_voice_chat.py"], capture_output=True)
     if result.returncode == 0:
         pids = result.stdout.decode().strip()
         table.add_row("voice-chat", "[green]running[/green]", f"pid {pids}")
     else:
         table.add_row("voice-chat", "[dim]stopped[/dim]", "")
+
+    # text chat
+    result = subprocess.run(["pgrep", "-f", "run_text_chat.py"], capture_output=True)
+    if result.returncode == 0:
+        pids = result.stdout.decode().strip()
+        table.add_row("text-chat", "[green]running[/green]", f"pid {pids}")
+    else:
+        table.add_row("text-chat", "[dim]stopped[/dim]", "")
 
     # memory
     stats = get_system_stats()

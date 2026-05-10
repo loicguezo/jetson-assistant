@@ -4,7 +4,7 @@ llm:
   model: ""                           # empty = auto-detect from server
   base_url: "http://localhost:8080"
   backend: "openai"                   # "openai" = llama.cpp OpenAI-compatible API
-  max_tokens: 128
+  max_tokens: 512
   temperature: 0.7
   timeout: 120.0
   system_prompt: |
@@ -25,10 +25,10 @@ stt:
 
 tts:
   voice: "af_sarah"                   # kokoro voices: af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
-  speed: 1.0
+  speed: 1.2                          # slightly faster speech reduces RTF on CPU
   lang: "en-us"                       # kokoro language code
-  first_chunk_words: 3                # words before first TTS chunk is sent
-  max_chunk_words: 8                  # max words per TTS chunk
+  first_chunk_words: 8                # words before first TTS chunk is sent
+  max_chunk_words: 25                 # larger chunks = fewer gaps (Kokoro RTF >1.0 on CPU)
 
 audio:
   sample_rate: 16000

@@ -124,15 +124,33 @@ def find_pa_sink(name_hint: str) -> Optional[str]:
 
 
 def play_audio(audio: np.ndarray, sample_rate: int, sink: Optional[str] = None):
-    """Play int16 audio via paplay (PulseAudio) or aplay fallback."""
+    """Play int16 audio via paplay (PulseAudio) or aplay fallback.
+
+    sink=None  → paplay with PulseAudio default sink (respects BT speaker etc.)
+    sink=<name> → paplay with a specific PA sink
+    Falls back to aplay if paplay is not available.
+    """
     raw = audio.astype(np.int16).tobytes()
+    paplay_args = ["--format=s16le", f"--rate={sample_rate}", "--channels=1", "--raw"]
+    if sink:
+        cmd = ["paplay", f"--device={sink}"] + paplay_args
+    else:
+        cmd = ["paplay"] + paplay_args
     try:
-        if sink:
-            cmd = ["paplay", f"--device={sink}", "--format=s16le",
-                   f"--rate={sample_rate}", "--channels=1", "--raw"]
-        else:
-            cmd = ["aplay", "-f", "S16_LE", "-r", str(sample_rate),
-                   "-c", "1", "-t", "raw", "-q"]
+        p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        try:
+            p.stdin.write(raw)
+        finally:
+            p.stdin.close()
+        p.wait(timeout=30)
+        return
+    except FileNotFoundError:
+        pass
+    except Exception:
+        return
+    # aplay fallback when paplay is not installed
+    try:
+        cmd = ["aplay", "-f", "S16_LE", "-r", str(sample_rate), "-c", "1", "-t", "raw", "-q"]
         p = subprocess.Popen(cmd, stdin=subprocess.PIPE, stderr=subprocess.DEVNULL)
         try:
             p.stdin.write(raw)
@@ -453,10 +471,12 @@ def stream_and_speak(
     few_shot: Optional[list[dict]] = None,
     first_chunk_words: int = 3,
     max_chunk_words: int = 8,
+    _retry: bool = True,
 ) -> tuple[str, float, Optional[float]]:
     """Stream LLM response while chunking text to TTS for real-time playback.
 
     Returns (full_response, elapsed_seconds, time_to_first_token).
+    Retries once when the server returns an empty response (stale KV-cache).
     """
     tts_q = None
     tts_thread = None
@@ -505,4 +525,59 @@ def stream_and_speak(
         if tts_thread.is_alive():
             sys.stderr.write("  [warn] TTS thread did not finish in 60s\n")
 
+    # llama-server occasionally returns [DONE] immediately when its KV-cache
+    # is in a bad state after rapid successive requests. Retry once to recover.
+    if ttft is None and _retry:
+        time.sleep(0.3)
+        return stream_and_speak(
+            llm, tts_obj, prompt, system_prompt,
+            pa_sink=pa_sink, few_shot=few_shot,
+            first_chunk_words=first_chunk_words,
+            max_chunk_words=max_chunk_words,
+            _retry=False,
+        )
+
     return full_resp, dt_llm, ttft
+
+
+# ── Shared startup helpers ────────────────────────────────────────
+
+def load_llm(config, console: Console):
+    """Load and connect the LLM from config. Prints status. Returns LLM instance."""
+    from app.llm import LLM
+    llm = LLM(
+        model=config.llm.model, base_url=config.llm.base_url,
+        backend=config.llm.backend, max_tokens=config.llm.max_tokens,
+        temperature=config.llm.temperature, timeout=config.llm.timeout,
+        system_prompt=config.llm.system_prompt,
+    )
+    if not llm.load():
+        console.print("[red]✗ LLM failed to connect[/red]")
+        return None
+    console.print(f"  ✓ LLM ({llm.model})")
+    return llm
+
+
+def load_tts(config, console: Console):
+    """Load TTS from config. Prints status. Returns TTS instance or None."""
+    from app.tts import create_tts
+    tts = create_tts(voice=config.tts.voice, speed=config.tts.speed, lang=config.tts.lang)
+    tts = tts if tts.load() else None
+    if tts:
+        console.print(f"  ✓ TTS ({tts.backend_name}, {tts.voice})")
+    else:
+        console.print("  ⚠ TTS unavailable — responses will be text only")
+    return tts
+
+
+def print_response_timing(console: Console, full_resp: str, dt_llm: float,
+                          ttft: Optional[float], prefix: str = "  "):
+    """Print TTFT / tok/s timing line after a response."""
+    if ttft is not None:
+        toks = len(full_resp.split())
+        console.print(
+            f"{prefix}[dim]TTFT {ttft:.1f}s | LLM {dt_llm:.1f}s"
+            f" ~{toks / (dt_llm or 1):.0f}w/s[/dim]"
+        )
+    else:
+        console.print(f"{prefix}[dim]LLM no response[/dim]")

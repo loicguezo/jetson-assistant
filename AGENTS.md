@@ -52,6 +52,12 @@ in `~/models/`. The setup wizard handles both.
 | `app/monitor.py` | CPU/GPU/RAM stats |
 | `config/settings.yaml` | All runtime configuration |
 
+## Shell commands
+
+- **Always set a timeout** on any command that could block: `curl --max-time 5`, `timeout 5 bluetoothctl`, `find` with `-maxdepth`. Commands without timeouts can hang the agent session indefinitely.
+- Avoid interactive commands (`bluetoothctl connect`, `git rebase -i`). Use non-interactive alternatives or pass the MAC/args directly.
+- Scope `find` searches to specific subdirectories, not broad paths like `/home/jetson` — on Jetson the `venv/` tree alone has thousands of files.
+
 ## Development
 
 - No SPDX headers on new files. Headers are kept only on files derived from the

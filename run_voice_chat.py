@@ -31,10 +31,9 @@ sys.path.insert(0, str(Path(__file__).parent))
 from app.config import Config
 from app.audio import find_alsa_device
 from app.stt import STT
-from app.llm import LLM
-from app.tts import create_tts
 from app.pipeline import (
     SAMPLE_RATE, MicRecorder, warmup_stt, vad_loop, stream_and_speak, load_silero,
+    load_llm, load_tts, print_response_timing,
 )
 from rich.console import Console
 from rich.panel import Panel
@@ -84,23 +83,10 @@ def main():
     else:
         console.print("  [dim]Silero VAD disabled, using energy-only VAD[/dim]")
 
-    llm = LLM(
-        model=config.llm.model, base_url=config.llm.base_url,
-        backend=config.llm.backend, max_tokens=config.llm.max_tokens,
-        temperature=config.llm.temperature, timeout=config.llm.timeout,
-        system_prompt=config.llm.system_prompt,
-    )
-    llm.load()
-    console.print(f"  ✓ LLM ({llm.model})")
-
-    tts = create_tts(
-        voice=config.tts.voice, speed=config.tts.speed, lang=config.tts.lang,
-    )
-    tts = tts if tts.load() else None
-    if tts:
-        console.print(f"  ✓ TTS ({tts.backend_name}, {tts.voice})")
-    else:
-        console.print("  ⚠ TTS unavailable")
+    llm = load_llm(config, console)
+    if not llm:
+        return
+    tts = load_tts(config, console)
 
     # ── Start mic ────────────────────────────────────────────────
     effective_chunk_ms = 32 if silero_model else config.vad.chunk_ms
@@ -139,14 +125,8 @@ def main():
             )
             console.print()
 
-            timing = f"  [dim]STT {dt_stt:.1f}s"
-            if ttft is not None:
-                toks = len(full_resp.split())
-                timing += f" | TTFT {ttft:.1f}s | LLM {dt_llm:.1f}s ~{toks/(dt_llm or 1):.0f}w/s"
-            else:
-                timing += " | LLM no response"
-            timing += "[/dim]"
-            console.print(timing)
+            console.print(f"  [dim]STT {dt_stt:.1f}s | ", end="")
+            print_response_timing(console, full_resp, dt_llm, ttft, prefix="")
 
             mic.resume()
 
