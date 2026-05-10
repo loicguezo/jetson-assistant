@@ -66,3 +66,6 @@ in `~/models/`. The setup wizard handles both.
 - Model files live in `~/models/` (gitignored). TTS voice files live in `voices/`.
 - HuggingFace login is required to download models: `hf auth login`.
 - **Comments**: keep them short and to the point — explain *why*, not *what*.
+
+See **[WORKFLOW.md](WORKFLOW.md)** for Git/PR workflow, known bugs & fixes,
+test commands, and the active issue backlog.
