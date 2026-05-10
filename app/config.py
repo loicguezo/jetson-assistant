@@ -52,6 +52,7 @@ class TTSConfig:
     first_chunk_words: int = 3
     max_chunk_words: int = 8
     piper_model: str = "en_US-lessac-medium"
+    ready_phrase: str = "Ready!"
 
 
 @dataclass

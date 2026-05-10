@@ -25,7 +25,7 @@ stt:
   beam_size: 1                        # 1=greedy (fast), 5=beam (quality)
 
 tts:
-  backend: "kokoro"                   # kokoro (default, GPU, English) or piper (CPU, multilingual incl. German)
+  backend: "piper"                    # kokoro (GPU, English) or piper (default, CPU, multilingual incl. German)
   voice: "af_sarah"                   # kokoro voice — af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
   speed: 1.0
   lang: "en-us"                       # kokoro language code (ignored when backend=piper)

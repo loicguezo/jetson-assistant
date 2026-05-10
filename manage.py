@@ -448,7 +448,7 @@ def start(
         None, "--max-chunk-words", help="Max words per TTS chunk after the first"
     ),
     tts_backend: str = typer.Option(
-        None, "--tts-backend", help="TTS backend: kokoro (default) or piper"
+        None, "--tts-backend", help="TTS backend: piper (default) or kokoro"
     ),
     piper_model: str = typer.Option(
         None, "--piper-model", help="Piper voice model (e.g. de_DE-thorsten-medium)"
@@ -1094,6 +1094,55 @@ def benchmark(
 
 _LOCAL_CONFIG_PATH = Path(__file__).parent / "config" / "settings.local.yaml"
 
+# Per-language defaults for system prompt and TTS ready phrase.
+# Keys are BCP-47 language codes as used in STT config (e.g. "de", "fr").
+_LANGUAGE_DEFAULTS: dict[str, dict[str, str]] = {
+    "de": {
+        "system_prompt": "Du bist ein hilfreicher KI-Assistent. Antworte auf Deutsch.",
+        "ready_phrase": "Bereit!",
+    },
+    "fr": {
+        "system_prompt": "Tu es un assistant IA utile. Réponds en français.",
+        "ready_phrase": "Prêt!",
+    },
+    "es": {
+        "system_prompt": "Eres un asistente de IA útil. Responde en español.",
+        "ready_phrase": "Listo!",
+    },
+    "it": {
+        "system_prompt": "Sei un assistente IA utile. Rispondi in italiano.",
+        "ready_phrase": "Pronto!",
+    },
+    "pt": {
+        "system_prompt": "És um assistente de IA útil. Responde em português.",
+        "ready_phrase": "Pronto!",
+    },
+    "nl": {
+        "system_prompt": "Je bent een behulpzame AI-assistent. Antwoord in het Nederlands.",
+        "ready_phrase": "Klaar!",
+    },
+    "pl": {
+        "system_prompt": "Jesteś pomocnym asystentem AI. Odpowiadaj po polsku.",
+        "ready_phrase": "Gotowy!",
+    },
+    "ru": {
+        "system_prompt": "Ты полезный ИИ-ассистент. Отвечай на русском.",
+        "ready_phrase": "Готов!",
+    },
+    "zh": {
+        "system_prompt": "你是一个有用的AI助手。请用中文回答。",
+        "ready_phrase": "就绪。",
+    },
+    "ja": {
+        "system_prompt": "あなたは役立つAIアシスタントです。日本語で答えてください。",
+        "ready_phrase": "準備完了。",
+    },
+    "ko": {
+        "system_prompt": "당신은 유용한 AI 어시스턴트입니다. 한국어로 답하세요.",
+        "ready_phrase": "준비됨.",
+    },
+}
+
 
 def _multilingual_stt_model(language: str, current_model: str) -> str | None:
     """Return the multilingual equivalent of an English-only model, or None if no change needed."""
@@ -1268,9 +1317,24 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
     else:
         console.print("  [dim]No .gguf models found in ~/models — skipping[/dim]")
 
-    system_prompt = Prompt.ask("  System prompt", default=cfg.llm.system_prompt)
-    if system_prompt != cfg.llm.system_prompt:
-        changes.setdefault("llm", {})["system_prompt"] = system_prompt
+    # Pre-fill localized defaults when a known non-English language is selected
+    lang_defaults = _LANGUAGE_DEFAULTS.get(stt_lang, {})
+    _default_system_prompt = lang_defaults.get("system_prompt", cfg.llm.system_prompt)
+    _default_ready_phrase = lang_defaults.get("ready_phrase", cfg.tts.ready_phrase)
+
+    if lang_defaults and stt_lang != "en":
+        console.print(
+            f"  [dim]Localized defaults available for '{stt_lang}' — press Enter to use them[/dim]"
+        )
+
+    system_prompt = Prompt.ask("  System prompt", default=_default_system_prompt)
+    # Always persist so settings.yaml changes don't silently override the user's choice
+    changes.setdefault("llm", {})["system_prompt"] = system_prompt
+
+    ready_phrase = Prompt.ask(
+        "  Ready phrase [dim](spoken on startup)[/dim]", default=_default_ready_phrase
+    )
+    changes.setdefault("tts", {})["ready_phrase"] = ready_phrase
 
     max_tokens_str = Prompt.ask("  Max tokens", default=str(cfg.llm.max_tokens))
     try:

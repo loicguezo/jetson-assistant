@@ -185,6 +185,42 @@ def test_multilingual_stt_model_no_change_when_already_multilingual():
     assert _multilingual_stt_model("de", "base") is None
 
 
+# ── _LANGUAGE_DEFAULTS ────────────────────────────────────────────
+
+
+def test_language_defaults_cover_common_languages():
+    from manage import _LANGUAGE_DEFAULTS
+
+    for lang in ["de", "fr", "es", "it", "pt", "nl", "pl", "ru", "zh", "ja", "ko"]:
+        assert lang in _LANGUAGE_DEFAULTS, f"missing: {lang}"
+        assert "system_prompt" in _LANGUAGE_DEFAULTS[lang]
+        assert "ready_phrase" in _LANGUAGE_DEFAULTS[lang]
+
+
+def test_language_defaults_no_english_entry():
+    from manage import _LANGUAGE_DEFAULTS
+
+    assert "en" not in _LANGUAGE_DEFAULTS
+
+
+def test_ready_phrase_in_config(tmp_path):
+    base = tmp_path / "settings.yaml"
+    base.write_text("tts:\n  ready_phrase: Bereit.\n")
+    from app.config import Config
+
+    cfg = Config.load(config_path=str(base))
+    assert cfg.tts.ready_phrase == "Bereit."
+
+
+def test_ready_phrase_default_is_english(tmp_path):
+    base = tmp_path / "settings.yaml"
+    base.write_text("")
+    from app.config import Config
+
+    cfg = Config.load(config_path=str(base))
+    assert cfg.tts.ready_phrase == "Ready!"
+
+
 # ── local_config_deleted_after_load ───────────────────────────────
 
 

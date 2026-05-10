@@ -129,10 +129,10 @@ def main():
         console.print("[red]Cannot start recording! Check mic.[/red]")
         return
 
-    console.print("\n[green bold]Ready — speak anytime![/green bold]\n")
+    console.print(f"\n[green bold]{config.tts.ready_phrase}[/green bold]\n")
 
     if tts:
-        r = tts.synthesize("Ready.")
+        r = tts.synthesize(config.tts.ready_phrase)
         if r.get("audio") is not None:
             from app.pipeline import play_audio
 
