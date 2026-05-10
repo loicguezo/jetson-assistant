@@ -8,14 +8,7 @@ llm:
   temperature: 0.7
   timeout: 120.0
   memory_turns: 20            # past turns sent as context (benchmarked: 20 turns @ ~100 tok/turn fits ctx=8192 with headroom)
-  system_prompt: |
-    You are a helpful voice assistant running on an NVIDIA Jetson.
-    Your responses will be spoken aloud via text-to-speech.
-    Answer in one sentence when possible, two max. Be direct.
-    Only answer what was asked. Do not volunteer extra details.
-    Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting.
-    Write numbers and units as spoken words when short.
-    Do not include terminal commands unless specifically asked.
+  system_prompt: "You are a helpful voice assistant running on an NVIDIA Jetson. Your responses will be spoken aloud via text-to-speech. Answer compactly and with depth: explain essential concepts precisely, without unnecessary embellishments. A response should not take longer than one minute to read aloud at a normal pace (approx. 130 words). Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting. Write numbers and units as spoken words when short."
 
 stt:
   model: "small.en"                   # tiny.en, base.en, small.en
@@ -27,11 +20,11 @@ stt:
 tts:
   backend: "piper"                    # kokoro (GPU, English) or piper (default, CPU, multilingual incl. German)
   voice: "af_sarah"                   # kokoro voice — af_sarah, af_bella, am_adam, bf_emma, bm_george, etc.
-  speed: 1.0
+  speed: 0.8
   lang: "en-us"                       # kokoro language code (ignored when backend=piper)
   piper_model: "en_US-lessac-medium"  # piper model name — e.g. de_DE-thorsten-medium for German
-  first_chunk_words: 3                # words before first TTS chunk is sent
-  max_chunk_words: 5                  # must be ≤ 2×first_chunk_words for gap-free audio (LLM ~5 w/s, speech ~2.5 w/s)
+  first_chunk_words: 5                # words before first TTS chunk is sent
+  max_chunk_words: 12                 # larger chunks = fewer synthesis calls = fewer gaps
 
 audio:
   sample_rate: 16000

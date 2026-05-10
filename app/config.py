@@ -47,7 +47,7 @@ class STTConfig:
 class TTSConfig:
     backend: str = "kokoro"  # kokoro or piper
     voice: str = "af_sarah"
-    speed: float = 1.0
+    speed: float = 0.8
     lang: str = "en-us"
     first_chunk_words: int = 3
     max_chunk_words: int = 8
