@@ -15,18 +15,26 @@ git commit -m "type: short description\n\nCo-Authored-By: Claude Sonnet 4.6 <nor
 git push -u origin <branch>
 ```
 
-**Create PRs via REST API** — `gh pr create` fails with GraphQL permission errors:
+**Always pass `--repo segutwein/jetson-assistant`** — the gh CLI defaults to the upstream
+`NVIDIA-AI-IOT/reachy-mini-jetson-assistant` repo (set as default by the fork), so every
+`gh issue`, `gh pr`, and `gh api` call needs the explicit `--repo` flag.
+
+**Create PRs via REST API** — `gh pr create` and `gh pr edit` fail with GraphQL permission errors.
+Use the REST API directly for both creating and updating PRs:
 
 ```bash
-TOKEN=$(cat ~/.config/gh/hosts.yml | grep 'oauth_token' | head -1 | awk '{print $2}')
-curl -s --max-time 10 -X POST \
-  -H "Authorization: token $TOKEN" \
-  -H "Accept: application/vnd.github.v3+json" \
-  https://api.github.com/repos/segutwein/jetson-assistant/pulls \
-  -d '{"title": "...", "head": "<branch>", "base": "main", "body": "..."}'
+# Create PR
+gh api repos/segutwein/jetson-assistant/pulls \
+  --method POST \
+  --field title="..." --field head="<branch>" --field base="main" --field body="..."
+
+# Update PR title/body
+gh api repos/segutwein/jetson-assistant/pulls/<n> \
+  --method PATCH \
+  --field title="..." --field body="..."
 ```
 
-**Update issues** the same way (PATCH `/issues/<n>`).
+**Update issues** the same way (PATCH `repos/segutwein/jetson-assistant/issues/<n>`).
 
 ## Testing
 
@@ -52,6 +60,12 @@ do a quick web search (NVIDIA forum, Jetson AI Lab docs, PyPI index). Past examp
 concluded "Kokoro TTS can't use CUDA on Jetson" based on ORT error messages — a search
 revealed the real cause was two conflicting onnxruntime packages installed simultaneously.
 The fix was a 2-line reinstall. When evidence contradicts expectations, search first.
+
+**Dependency rule:** Before implementing against a GitHub project, verify via
+`gh api repos/<owner>/<repo> --jq '.archived'` that it is **not archived**.
+If archived, find the actively maintained successor before writing any code.
+Past example: we implemented Piper TTS against `rhasspy/piper` (archived) and had to
+rewrite the entire integration when we discovered the successor `OHF-Voice/piper1-gpl`.
 
 **Docs rule:** Every PR that changes user-visible behaviour, install steps, or the
 known-issues table must update the relevant file before merge:
@@ -116,11 +130,10 @@ All blocking prompts in `./jetson-assistant start` auto-select the default
 after 5 seconds. Implemented via `_countdown_wait()` / `confirm_with_countdown()`
 in `manage.py`. Required for unattended autostart (issue #3).
 
-## Open issues (as of 2026-05-10)
+## Open issues
 
-Priority order we've been following:
-1. **#5** Conversation memory — next up
-2. **#12** Unit tests for pipeline edge cases
-3. **#13** CLI flags for LLM parameters (incl. `--reasoning`)
-4. **#21** Live memory/GPU stats per response
-5. **#3** Autostart via systemd
+```bash
+gh issue list --state open --repo segutwein/jetson-assistant
+gh pr list --state open --repo segutwein/jetson-assistant  # doesn't work — use REST API:
+gh api "repos/segutwein/jetson-assistant/pulls?state=open" --jq '.[] | "#\(.number) \(.title)"'
+```
