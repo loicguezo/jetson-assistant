@@ -139,19 +139,46 @@ def start_llama_server(model_path: Path, port: int = 8080, ctx: int = 4096) -> O
     return proc.pid
 
 
-def stop_llama_server():
-    pid = read_pid(LLAMA_PID_FILE)
-    if pid and is_process_running(pid):
+def _kill_pid(pid: int, timeout_steps: int = 20) -> None:
+    """SIGTERM a PID, escalate to SIGKILL if it doesn't die."""
+    try:
         os.kill(pid, signal.SIGTERM)
-        for _ in range(20):
-            if not is_process_running(pid):
-                break
-            time.sleep(0.5)
-        else:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except (ProcessLookupError, PermissionError):
-                pass
+    except (ProcessLookupError, PermissionError):
+        return
+    for _ in range(timeout_steps):
+        if not is_process_running(pid):
+            return
+        time.sleep(0.5)
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+
+
+def find_llama_server_pids() -> list[int]:
+    """Return PIDs of all running llama-server processes (tracked or orphaned)."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-f", "llama-server"],
+            capture_output=True, text=True, timeout=5,
+        )
+        return [int(p) for p in result.stdout.split() if p.strip().isdigit()]
+    except Exception:
+        return []
+
+
+def stop_llama_server():
+    tracked_pid = read_pid(LLAMA_PID_FILE)
+
+    # Kill tracked PID first
+    if tracked_pid and is_process_running(tracked_pid):
+        _kill_pid(tracked_pid)
+
+    # Kill any orphaned llama-server processes not in the PID file
+    for pid in find_llama_server_pids():
+        if pid != tracked_pid and is_process_running(pid):
+            _kill_pid(pid)
+
     if LLAMA_PID_FILE.exists():
         LLAMA_PID_FILE.unlink()
     if LLAMA_PORT_FILE.exists():
