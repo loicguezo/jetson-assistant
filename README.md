@@ -4,16 +4,17 @@
   <a href="https://developer.nvidia.com/embedded/jetson-orin-nano"><img src="docs/images/jetson-family.png" alt="NVIDIA Jetson" height="180"/></a>
 </p>
 
-A low-latency, fully on-device voice assistant for NVIDIA Jetson. Everything runs locally with GPU acceleration — no cloud, no API keys, no internet required at runtime.
+A low-latency, fully on-device voice and text assistant for NVIDIA Jetson. Everything runs locally with GPU acceleration — no cloud, no API keys, no internet required at runtime.
 
 > **Current target:** Jetson Orin Nano 8GB (JetPack 6.x, Python 3.10)
 
 ## What It Does
 
-Speak into a microphone and the assistant responds using a local LLM. Speech is detected automatically via VAD, transcribed via Whisper, answered by the LLM, and spoken back via TTS.
+Speak into a microphone (or type) and the assistant responds using a local LLM. Speech is detected automatically via VAD, transcribed via Whisper, answered by the LLM, and spoken back via TTS.
 
 ```
 [Mic] → [Silero VAD] → [faster-whisper STT] → [LLM stream] → [TTS stream] → [Speaker]
+[Keyboard] ──────────────────────────────────↗
 ```
 
 ## Stack
@@ -22,21 +23,19 @@ Speak into a microphone and the assistant responds using a local LLM. Speech is 
 |-----------|---------|:---:|
 | **LLM** | llama.cpp (native, no Docker) | GPU (CUDA) |
 | **STT** | faster-whisper | GPU (CUDA) |
-| **TTS** | Kokoro ONNX *(default)* or Piper | GPU (CUDA) |
+| **TTS** | Piper *(default)* or Kokoro | GPU (CUDA) |
 | **VAD** | Silero VAD | CPU |
 
-**TTS backends:** Kokoro (English, CUDA via `onnxruntime-gpu`) and Piper (multilingual, CUDA auto-detected via the same `onnxruntime-gpu`) are both supported and switchable via config or CLI flag.
+**TTS backends:** Piper (default, multilingual, CPU+CUDA) and Kokoro (English, CUDA) are both supported. Switch via `./jetson-assistant config` or CLI flags per session.
 
 llama.cpp is compiled directly on the Jetson — no Docker, no Python wrapper overhead. This keeps the memory footprint as small as possible on the shared 8 GB unified memory.
 
-Kokoro TTS runs in a **separate subprocess** to isolate its GPL-licensed dependencies (phonemizer, espeak-ng) from the CUDA process. ONNX Runtime GPU (`onnxruntime-gpu` from the Jetson AI Lab index) enables `CUDAExecutionProvider`, reducing TTS RTF from ~1.17x to ~0.14x (8x faster).
-
-**Default model:** [Gemma 4 E4B Q4_K_M](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) (~4.6 GB) — Google's Gemma 4 Efficient 4B, quantized by unsloth. Any GGUF model placed in `~/models/` is picked up automatically by `./jetson-assistant start`.
+**Default model:** [Gemma 4 E4B Q4_K_M](https://huggingface.co/unsloth/gemma-4-E4B-it-GGUF) (~4.6 GB) — Google's Gemma 4 Efficient 4B, quantized by unsloth. Any GGUF model placed in `~/models/` is picked up automatically.
 
 ## Prerequisites
 
 - **NVIDIA Jetson Orin Nano** (8GB) with JetPack 6.x, Python 3.10
-- **USB microphone** and **speaker** (or Bluetooth audio device)
+- **USB microphone** and **speaker** (voice mode only)
 - **NVMe SSD** recommended for swap and model storage
 - **HuggingFace account** — required to download models (`hf auth login`)
 
@@ -44,13 +43,17 @@ Kokoro TTS runs in a **separate subprocess** to isolate its GPL-licensed depende
 
 See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, building llama.cpp, Python packages, model downloads, and troubleshooting.
 
+```bash
+./jetson-assistant setup   # builds llama.cpp, downloads model + TTS/STT models,
+                           # and walks through personal configuration (Step 8/8)
+```
+
 ## Usage
 
 ```bash
-./jetson-assistant setup            # first-time setup: build llama.cpp, download model, create venv
-./jetson-assistant start            # model picker → llama-server → voice chat
-./jetson-assistant start --max-tokens 256 --temperature 0.5   # override LLM settings
-./jetson-assistant start --tts-speed 1.3 --first-chunk-words 4 --max-chunk-words 8  # override TTS
+./jetson-assistant start            # show settings, launch llama-server, start voice chat
+./jetson-assistant start --text     # text mode — type prompts, no microphone required
+./jetson-assistant config           # change language, TTS voice, STT model, LLM model
 ./jetson-assistant stop             # stop everything
 ./jetson-assistant status           # show what's running + memory usage
 ./jetson-assistant optimize         # apply memory optimizations (reversible, asks per item)
@@ -66,30 +69,90 @@ See **[SETUP.md](SETUP.md)** for the full installation guide — dependencies, b
 ./jetson-assistant benchmark        # TTS → STT → LLM chain with fixed inputs, reports timing
 ```
 
+Per-session overrides via CLI flags:
+```bash
+./jetson-assistant start --tts-backend piper --piper-model de_DE-thorsten-high
+./jetson-assistant start --max-tokens 256 --temperature 0.5
+./jetson-assistant start --tts-speed 1.2 --first-chunk-words 4 --max-chunk-words 10
+```
+
 Add the project directory to `PATH` to use `jetson-assistant` from anywhere:
 ```bash
 echo 'export PATH="$HOME/workspace/jetson-assistant:$PATH"' >> ~/.bashrc
 source ~/.bashrc
 ```
 
+## Text Mode
+
+Text mode lets you chat with the assistant without a microphone — useful for testing, SSH sessions, or when you just prefer typing. Responses are still spoken aloud via TTS.
+
+```bash
+./jetson-assistant start --text
+```
+
+```
+╭──────────────────────────────────────────────────────────────╮
+│ Text Assistant                                               │
+│ Type your message — response is spoken aloud                 │
+│ 'quit' to exit · 'stats' for system info · Ctrl-C to quit   │
+╰──────────────────────────────────────────────────────────────╯
+
+Loading...
+  ✓ LLM (gemma-4-E4B-it-Q4_K_M.gguf)  +0.0GB → 5.0GB
+  ✓ TTS (Piper, en_US-lessac-medium)   +0.6GB → 5.6GB
+
+Ready!
+
+You: What is a NVIDIA Jetson in one sentence?
+Assistant: An NVIDIA Jetson is a family of small, power-efficient, single-board computers
+specifically designed to enable on-device artificial intelligence and edge computing
+applications, allowing complex AI processing to happen locally rather than in the cloud.
+  TTFT 0.9s | LLM 4.6s ~7w/s | RAM 6.1/7.4GB GPU 52°C 918MHz
+
+You: What makes this assistant different from cloud-based ones?
+Assistant: This assistant runs directly on an NVIDIA Jetson, meaning processing occurs
+locally on the device itself, not on remote servers. This edge computing capability
+provides significantly lower latency, as data does not need to travel to the cloud
+and back. Furthermore, it offers enhanced privacy because sensitive data remains within
+the local hardware, making it ideal for real-time, offline deployments.
+  TTFT 0.3s | LLM 6.5s ~9w/s | RAM 6.4/7.4GB GPU 53°C 918MHz
+```
+
+Special commands in both modes: `stats` (system info), `forget` (clear conversation history).
+
 ## Configuration
 
-All settings live in `config/settings.yaml`:
+Personal settings are stored in `config/settings.local.yaml` (gitignored, never committed). Run the interactive wizard to configure everything in one flow:
+
+```bash
+./jetson-assistant config
+```
+
+The wizard covers: interface mode, language, TTS backend and voice, STT model, and LLM model. On first `./jetson-assistant start`, it runs automatically if no local config exists.
+
+Every `start` shows your active settings before launching, with a 5-second window to jump into the wizard:
+
+```
+  Mode      voice
+  Language  de  ·  STT: base
+  TTS       piper · de_DE-thorsten-high · speed 0.8
+  LLM       gemma-4-E4B-it-Q4_K_M.gguf
+  Prompt    Du bist ein hilfreicher Sprachassistent auf einem NVI…
+
+  Change settings? [n]  —  auto in 5s
+```
+
+For advanced settings (`max_tokens`, `temperature`, VAD thresholds, audio device), edit `config/settings.yaml` directly:
 
 | Section | What It Controls |
 |---------|-----------------|
-| `llm` | Server URL, model, temperature, max tokens, system prompt |
+| `llm` | Server URL, model, temperature, max tokens, system prompt, memory turns |
 | `stt` | Whisper model size, CUDA device, beam size, language |
-| `tts` | Voice, speed, language code, chunking |
+| `tts` | Backend, voice, speed, chunking parameters |
 | `audio` | Sample rate, input device name hint |
 | `vad` | Silero threshold, silence duration, utterance filters |
 
 **Selecting your microphone:** set `audio.input_device` in `settings.yaml` to a substring of your device name (check `arecord -l` or run `./jetson-assistant test --mic`), or leave it `null` to auto-detect.
-
-**Changing language:** Switch to Piper TTS for multilingual support. Browse available voices at [rhasspy.github.io/piper-samples](https://rhasspy.github.io/piper-samples/), pick a voice, and set `tts.backend: piper` + `tts.piper_model: <model-name>` in `settings.yaml`. Also set `stt.language` to your target language and switch `stt.model` from `small.en` to `small` for multilingual transcription. Or use CLI flags per session:
-```bash
-./jetson-assistant start --tts-backend piper --piper-model de_DE-thorsten-high
-```
 
 **Bluetooth speaker:** use `scripts/connect-bt-speaker.sh` to pair and set a Bluetooth speaker as the default PulseAudio sink.
 
@@ -98,26 +161,29 @@ All settings live in `config/settings.yaml`:
 ```
 jetson-assistant/
 ├── app/
-│   ├── pipeline.py       # Audio I/O, VAD loop, TTS streaming
-│   ├── config.py         # Configuration dataclasses + YAML loader
-│   ├── llm.py            # LLM client (OpenAI-compatible, streams to llama-server)
-│   ├── stt.py            # faster-whisper speech-to-text
-│   ├── tts.py            # TTS client (spawns subprocess worker)
-│   ├── tts_worker.py     # TTS subprocess (Kokoro + GPL deps, isolated)
-│   ├── manager.py        # llama-server lifecycle, PID files, GGUF discovery
-│   ├── optimize.py       # System optimizations with state persistence
-│   ├── setup_wizard.py   # First-time setup logic (build, download, venv)
-│   ├── benchmark.py      # Full-pipeline benchmark (TTS → STT → LLM)
-│   ├── test_components.py # Component tests (LLM, STT, TTS, VAD, mic)
-│   ├── monitor.py        # CPU/GPU/RAM stats
-│   └── audio.py          # PulseAudio / ALSA device helpers
+│   ├── pipeline.py         # Audio I/O, VAD loop, TTS streaming
+│   ├── config.py           # Configuration dataclasses + YAML loader
+│   ├── llm.py              # LLM client (OpenAI-compatible, streams to llama-server)
+│   ├── stt.py              # faster-whisper speech-to-text
+│   ├── tts.py              # TTS client (Piper in-process, Kokoro subprocess)
+│   ├── tts_worker.py       # Kokoro TTS subprocess (GPL deps isolated)
+│   ├── history.py          # Persistent conversation history (rolling window)
+│   ├── manager.py          # llama-server lifecycle, PID files, GGUF discovery
+│   ├── optimize.py         # System optimizations with state persistence
+│   ├── setup_wizard.py     # First-time setup logic (build, download, venv)
+│   ├── benchmark.py        # Full-pipeline benchmark (TTS → STT → LLM)
+│   ├── test_components.py  # Component tests (LLM, STT, TTS, VAD, mic)
+│   ├── monitor.py          # CPU/GPU/RAM stats
+│   └── audio.py            # PulseAudio / ALSA device helpers
 ├── config/
-│   └── settings.yaml     # All runtime configuration
+│   ├── settings.yaml       # Default runtime configuration
+│   └── settings.local.yaml # Personal overrides (gitignored)
 ├── scripts/
 │   └── connect-bt-speaker.sh  # Bluetooth speaker setup helper
-├── voices/               # TTS voice files (gitignored)
-├── manage.py             # ./jetson-assistant CLI entry point
-└── run_voice_chat.py     # Voice pipeline entry point
+├── voices/                 # TTS voice files (gitignored)
+├── manage.py               # ./jetson-assistant CLI entry point
+├── run_voice_chat.py       # Voice pipeline entry point
+└── run_text_chat.py        # Text pipeline entry point
 ```
 
 ## Performance (Orin Nano 8GB)
@@ -126,10 +192,10 @@ Measured with `./jetson-assistant benchmark` — fixed inputs, reproducible acro
 
 | Component | Time | Model |
 |-----------|-----:|-------|
-| TTS (synthesis) | ~0.5 s | Kokoro `af_sarah`, CUDA (RTF 0.16×) |
-| STT (transcribe) | 1.19 s | faster-whisper `small.en`, CUDA |
-| LLM (time to first token) | 0.4–0.9 s | Gemma 4 E4B Q4_K_M (`--reasoning off`) |
-| LLM (full response) | 2–4 s | Gemma 4 E4B Q4_K_M |
+| TTS (synthesis) | ~0.47 s | Piper `de_DE-thorsten-high`, CUDA (RTF 0.13×) |
+| STT (transcribe) | ~1.19 s | faster-whisper `small.en`, CUDA |
+| LLM (time to first token) | 0.3–0.9 s | Gemma 4 E4B Q4_K_M |
+| LLM (full response) | 4–7 s | Gemma 4 E4B Q4_K_M (~7–9 w/s) |
 
 ### TTS Backend Comparison
 
@@ -137,18 +203,18 @@ Both backends use CUDA via `onnxruntime-gpu`. Measured on Orin Nano 8GB with a ~
 
 | Backend | Voice | Language | Avg synthesis | RTF (warm) |
 |---------|-------|----------|:-------------:|:----------:|
-| **Kokoro** *(default)* | `af_sarah` | English | ~0.56 s | 0.16× |
-| **Piper** | `de_DE-thorsten-high` | German | ~0.47 s | 0.13× |
+| **Piper** *(default)* | `de_DE-thorsten-high` | German | ~0.47 s | 0.13× |
+| **Kokoro** | `af_sarah` | English | ~0.56 s | 0.16× |
 
-Piper synthesises in-process (no subprocess IPC overhead), which reduces latency slightly. Kokoro runs in a subprocess for GPL isolation — that adds one JSON round-trip per utterance.
+Piper synthesises in-process (no subprocess IPC overhead). Kokoro runs in a subprocess for GPL isolation — that adds one JSON round-trip per utterance.
 
 Run your own comparison:
 ```bash
-./jetson-assistant benchmark --tts-backend kokoro
 ./jetson-assistant benchmark --tts-backend piper --piper-model de_DE-thorsten-high
+./jetson-assistant benchmark --tts-backend kokoro
 ```
 
-> RTF = synthesis time ÷ audio duration. RTF < 1.0 means faster than real-time. Run `./jetson-assistant benchmark` to get exact values on your setup.
+> RTF = synthesis time ÷ audio duration. RTF < 1.0 means faster than real-time.
 
 ## Roadmap
 
@@ -156,12 +222,14 @@ Run your own comparison:
 - [x] Silero VAD for robust speech detection
 - [x] Native llama.cpp (no Docker overhead)
 - [x] Management CLI (`setup`, `start`, `stop`, `status`, `optimize`, `test`, `benchmark`)
-- [x] Memory optimizations (`optimize` command — reversible, per-item dialog)
+- [x] Memory optimizations (`optimize` command — reversible, per-item dialog, autostart service)
 - [x] Bluetooth speaker support (`scripts/connect-bt-speaker.sh`)
-- [x] Language configurable via `settings.yaml` (`stt.language`, `tts.lang` + voice)
-- [x] TTS GPU acceleration (Kokoro + Piper both via `onnxruntime-gpu`, RTF ~0.13–0.16×)
+- [x] Dual TTS backends — Piper (multilingual) + Kokoro (English), both CUDA-accelerated
 - [x] Multi-turn conversation memory (rolling window, persistent across sessions)
-- [x] Dual TTS backends — Kokoro (English) + Piper (multilingual), both CUDA-accelerated
+- [x] Text mode (`--text` flag — keyboard input, no microphone required)
+- [x] Interactive config wizard (`config` command — language, voice, STT, LLM in one flow)
+- [x] Language localization — system prompt and ready phrase in 12 languages
+- [x] Personal config overrides (`settings.local.yaml`, gitignored)
 - [ ] Auto-start as systemd service (boot without manual `./jetson-assistant start`)
 - [ ] Wake word detection (hands-free activation)
 
@@ -181,7 +249,7 @@ This project uses [Kokoro ONNX](https://github.com/thewh1teagle/kokoro-onnx) for
 - **phonemizer-fork** — GPL-3.0
 - **espeak-ng** — GPL-3.0
 
-To avoid loading GPL-licensed code into the same process as NVIDIA CUDA libraries, TTS runs in a **separate subprocess** (`app/tts_worker.py`). The main process never imports `kokoro-onnx` directly — it communicates with the worker via JSON over stdin/stdout.
+To avoid loading GPL-licensed code into the same process as NVIDIA CUDA libraries, Kokoro TTS runs in a **separate subprocess** (`app/tts_worker.py`). The main process never imports `kokoro-onnx` directly — it communicates with the worker via JSON over stdin/stdout.
 
 All other dependencies use permissive licenses (MIT, BSD-3, Apache-2.0). See [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md) for the full list.
 

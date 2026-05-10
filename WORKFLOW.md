@@ -81,6 +81,28 @@ and don't context-switch mid-task. The new issue can be picked up in a later ses
 **Code quality:** Run `ruff check . --fix && ruff format .` before every commit.
 `pre-commit install` sets this up as a git hook automatically after cloning.
 
+## Running the assistant for testing / README demos
+
+Text mode works without a microphone and can be driven from stdin — useful for capturing output or running non-interactive tests.
+
+```bash
+# 1. Start llama-server non-interactively (skips all prompts)
+venv/bin/python -c "
+from app.manager import find_gguf_models, start_llama_server, wait_for_llama_server
+models = find_gguf_models()
+start_llama_server(models[0], port=8080, ctx=8192)
+wait_for_llama_server(timeout=120)
+print('ready')
+"
+
+# 2. Pipe prompts into text chat and capture clean output
+printf "Question one?\nQuestion two?\nquit\n" \
+  | timeout 120 venv/bin/python run_text_chat.py 2>/dev/null \
+  | sed 's/\x1B\[[0-9;]*[mK]//g' | sed 's/\r//'
+```
+
+TTS audio playback may fail silently in non-interactive contexts — that's fine, only the text output matters. The `2>/dev/null` suppresses Piper/ONNX warnings.
+
 ## llama-server lifecycle
 
 ```bash
