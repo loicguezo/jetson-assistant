@@ -4,7 +4,6 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
-from typing import Optional
 
 LLAMA_DIR = Path.home() / "llama.cpp"
 MODELS_DIR = Path.home() / "models"
@@ -23,11 +22,12 @@ RECOMMENDED_MODELS = [
 
 # ── Prerequisite checks ────────────────────────────────────────────
 
-def check_tool(name: str) -> Optional[str]:
+
+def check_tool(name: str) -> str | None:
     return shutil.which(name)
 
 
-def check_cuda() -> Optional[str]:
+def check_cuda() -> str | None:
     nvcc = shutil.which("nvcc")
     if nvcc:
         return nvcc
@@ -44,14 +44,13 @@ def check_cuda() -> Optional[str]:
     return None
 
 
-
 # required: build fails without these
 # optional: warning only, build may still succeed
 _REQUIRED = ["git", "cmake", "make"]
 _OPTIONAL = ["nvcc"]  # cmake can sometimes find CUDA without nvcc in PATH
 
 
-def check_venv_module() -> Optional[str]:
+def check_venv_module() -> str | None:
     """Check that python3.10 -m venv works (requires python3.10-venv on Debian/Ubuntu)."""
     r = subprocess.run(
         ["python3.10", "-m", "venv", "--help"],
@@ -60,29 +59,31 @@ def check_venv_module() -> Optional[str]:
     return "python3.10" if r.returncode == 0 else None
 
 
-def check_portaudio() -> Optional[str]:
+def check_portaudio() -> str | None:
     """Check that PortAudio is installed (needed by sounddevice for mic/speaker)."""
     import ctypes.util
+
     lib = ctypes.util.find_library("portaudio")
     return lib if lib else None
 
 
 def check_prerequisites() -> dict:
     results = {
-        "git":          (check_tool("git"),   True),
-        "cmake":        (check_tool("cmake"), True),
-        "make":         (check_tool("make"),  True),
-        "nvcc":         (check_cuda(),        False),  # optional
-        "pip3":         (check_tool("pip3") or check_tool("pip"), True),
+        "git": (check_tool("git"), True),
+        "cmake": (check_tool("cmake"), True),
+        "make": (check_tool("make"), True),
+        "nvcc": (check_cuda(), False),  # optional
+        "pip3": (check_tool("pip3") or check_tool("pip"), True),
         "python3-venv": (check_venv_module(), True),
-        "portaudio":    (check_portaudio(),   True),
+        "portaudio": (check_portaudio(), True),
     }
     return results
 
 
 # ── llama.cpp ──────────────────────────────────────────────────────
 
-def llama_server_path() -> Optional[Path]:
+
+def llama_server_path() -> Path | None:
     p = LLAMA_DIR / "build/bin/llama-server"
     return p if p.exists() else None
 
@@ -91,8 +92,14 @@ def clone_llama_cpp() -> bool:
     if LLAMA_DIR.exists():
         return True
     rc = subprocess.run(
-        ["git", "clone", "--depth", "1",
-         "https://github.com/ggml-org/llama.cpp", str(LLAMA_DIR)],
+        [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "https://github.com/ggml-org/llama.cpp",
+            str(LLAMA_DIR),
+        ],
     ).returncode
     return rc == 0
 
@@ -100,13 +107,16 @@ def clone_llama_cpp() -> bool:
 def build_llama_cpp() -> bool:
     env_path = "/usr/local/cuda/bin"
     import os
+
     env = os.environ.copy()
     env["PATH"] = env_path + ":" + env.get("PATH", "")
     env["CUDA_HOME"] = "/usr/local/cuda"
 
     cmake_configure = subprocess.run(
         [
-            "cmake", "-B", "build",
+            "cmake",
+            "-B",
+            "build",
             "-DGGML_CUDA=ON",
             "-DCMAKE_CUDA_ARCHITECTURES=87",
             "-DCMAKE_BUILD_TYPE=Release",
@@ -117,9 +127,7 @@ def build_llama_cpp() -> bool:
     if cmake_configure.returncode != 0:
         return False
 
-    nproc = subprocess.run(
-        ["nproc"], capture_output=True, text=True
-    ).stdout.strip() or "4"
+    nproc = subprocess.run(["nproc"], capture_output=True, text=True).stdout.strip() or "4"
 
     cmake_build = subprocess.run(
         ["cmake", "--build", "build", "--config", "Release", "-j", nproc],
@@ -131,9 +139,11 @@ def build_llama_cpp() -> bool:
 
 # ── Model download ─────────────────────────────────────────────────
 
+
 def _ensure_huggingface_hub() -> bool:
     try:
         import huggingface_hub  # noqa: F401
+
         return True
     except ImportError:
         rc = subprocess.run(
@@ -142,7 +152,7 @@ def _ensure_huggingface_hub() -> bool:
         return rc == 0
 
 
-def _hf_cmd() -> Optional[str]:
+def _hf_cmd() -> str | None:
     """Return the HuggingFace CLI binary: `hf` (new) or `huggingface-cli` (old)."""
     return shutil.which("hf") or shutil.which("huggingface-cli")
 
@@ -158,6 +168,7 @@ def check_hf_login() -> bool:
     # Python fallback
     try:
         from huggingface_hub import HfFolder
+
         return HfFolder.get_token() is not None
     except Exception:
         return False
@@ -171,16 +182,19 @@ def hf_login() -> bool:
         login_args = [cmd, "auth", "login"] if name == "hf" else [cmd, "login"]
         return subprocess.run(login_args).returncode == 0
     # Python fallback
-    return subprocess.run(
-        [sys.executable, "-c", "from huggingface_hub import login; login()"]
-    ).returncode == 0
+    return (
+        subprocess.run(
+            [sys.executable, "-c", "from huggingface_hub import login; login()"]
+        ).returncode
+        == 0
+    )
 
 
 class DownloadAuthError(Exception):
     """Raised when a model download fails due to missing authentication (HTTP 401/403)."""
 
 
-def download_model(repo: str, filename: str) -> Optional[Path]:
+def download_model(repo: str, filename: str) -> Path | None:
     MODELS_DIR.mkdir(parents=True, exist_ok=True)
     dest = MODELS_DIR / filename
     if dest.exists():
@@ -190,7 +204,15 @@ def download_model(repo: str, filename: str) -> Optional[Path]:
     if cmd:
         name = Path(cmd).name
         if name == "hf":
-            args = [cmd, "download", repo, "--include", filename, "--local-dir", str(MODELS_DIR)]
+            args = [
+                cmd,
+                "download",
+                repo,
+                "--include",
+                filename,
+                "--local-dir",
+                str(MODELS_DIR),
+            ]
         else:
             args = [cmd, "download", repo, filename, "--local-dir", str(MODELS_DIR)]
         # Let stdout/stderr through so the hf CLI progress bar is visible.
@@ -208,12 +230,15 @@ def download_model(repo: str, filename: str) -> Optional[Path]:
     # Python fallback via huggingface_hub
     if not _ensure_huggingface_hub():
         return None
-    from huggingface_hub import hf_hub_download, HfFolder
+    from huggingface_hub import HfFolder, hf_hub_download
+
     token = HfFolder.get_token()
     try:
         path = hf_hub_download(
-            repo_id=repo, filename=filename,
-            local_dir=str(MODELS_DIR), token=token,
+            repo_id=repo,
+            filename=filename,
+            local_dir=str(MODELS_DIR),
+            token=token,
         )
         return Path(path)
     except Exception as e:
@@ -243,13 +268,14 @@ CT2_VERSION = "v4.7.1"
 CT2_JETSON_INDEX = "https://pypi.jetson-ai-lab.dev/jp6/cu126"
 
 
-def ctranslate2_has_cuda(venv_dir: Optional[Path] = None) -> bool:
+def ctranslate2_has_cuda(venv_dir: Path | None = None) -> bool:
     """Return True if the installed CTranslate2 was built with CUDA support.
 
     Runs a subprocess so the check is never confused by module-import caching
     or a missing LD_LIBRARY_PATH in the parent process.
     """
     import os
+
     python = str(venv_dir / "bin/python3") if venv_dir else sys.executable
 
     # Build LD_LIBRARY_PATH: include the ctranslate2 package dir (where the
@@ -267,9 +293,14 @@ def ctranslate2_has_cuda(venv_dir: Optional[Path] = None) -> bool:
         env["LD_LIBRARY_PATH"] = ":".join(ld_paths + ([existing] if existing else []))
 
     r = subprocess.run(
-        [python, "-c",
-         "import ctranslate2; print(ctranslate2.get_cuda_device_count())"],
-        capture_output=True, text=True, env=env,
+        [
+            python,
+            "-c",
+            "import ctranslate2; print(ctranslate2.get_cuda_device_count())",
+        ],
+        capture_output=True,
+        text=True,
+        env=env,
     )
     try:
         return int(r.stdout.strip()) > 0
@@ -290,10 +321,15 @@ def install_ctranslate2_cuda(venv_dir: Path) -> bool:
 
     # ── Attempt 1: pre-built wheel ─────────────────────────────
     print("  Trying pre-built wheel from jetson-ai-lab.dev...", flush=True)
-    rc = subprocess.run([
-        str(pip), "install", "ctranslate2",
-        "--extra-index-url", CT2_JETSON_INDEX,
-    ]).returncode
+    rc = subprocess.run(
+        [
+            str(pip),
+            "install",
+            "ctranslate2",
+            "--extra-index-url",
+            CT2_JETSON_INDEX,
+        ]
+    ).returncode
     if rc == 0 and ctranslate2_has_cuda(venv_dir):
         return True
 
@@ -305,18 +341,26 @@ def install_ctranslate2_cuda(venv_dir: Path) -> bool:
 def clone_ctranslate2() -> bool:
     if CT2_DIR.exists():
         return True
-    rc = subprocess.run([
-        "git", "clone", "--recursive", "--depth", "1",
-        "--branch", CT2_VERSION,
-        "https://github.com/OpenNMT/CTranslate2.git",
-        str(CT2_DIR),
-    ]).returncode
+    rc = subprocess.run(
+        [
+            "git",
+            "clone",
+            "--recursive",
+            "--depth",
+            "1",
+            "--branch",
+            CT2_VERSION,
+            "https://github.com/OpenNMT/CTranslate2.git",
+            str(CT2_DIR),
+        ]
+    ).returncode
     return rc == 0
 
 
 def _build_ctranslate2_from_source(venv_dir: Path) -> bool:
     """Build CTranslate2 v4.7.1 from source with CUDA, install to /usr/local."""
     import os
+
     env = os.environ.copy()
     env["PATH"] = "/usr/local/cuda/bin:" + env.get("PATH", "")
     env["CUDA_HOME"] = "/usr/local/cuda"
@@ -330,7 +374,8 @@ def _build_ctranslate2_from_source(venv_dir: Path) -> bool:
     # Configure
     rc = subprocess.run(
         ["cmake", ".."] + CT2_CMAKE_FLAGS,
-        cwd=build_dir, env=env,
+        cwd=build_dir,
+        env=env,
     ).returncode
     if rc != 0:
         return False
@@ -339,7 +384,8 @@ def _build_ctranslate2_from_source(venv_dir: Path) -> bool:
     nproc = subprocess.run(["nproc"], capture_output=True, text=True).stdout.strip() or "4"
     rc = subprocess.run(
         ["cmake", "--build", ".", "--config", "Release", "-j", nproc],
-        cwd=build_dir, env=env,
+        cwd=build_dir,
+        env=env,
     ).returncode
     if rc != 0:
         return False
@@ -347,7 +393,8 @@ def _build_ctranslate2_from_source(venv_dir: Path) -> bool:
     # Install C++ library to /usr/local so the dynamic linker can find it
     rc = subprocess.run(
         ["sudo", "cmake", "--install", "."],
-        cwd=build_dir, env=env,
+        cwd=build_dir,
+        env=env,
     ).returncode
     if rc != 0:
         return False
@@ -366,10 +413,12 @@ def _build_ctranslate2_from_source(venv_dir: Path) -> bool:
 
 # ── Whisper model download ─────────────────────────────────────────
 
+
 def whisper_model_cached(model_name: str) -> bool:
     """Return True if the faster-whisper model is already in the HF cache."""
     try:
         from huggingface_hub import try_to_load_from_cache
+
         repo_id = f"Systran/faster-whisper-{model_name}"
         # try_to_load_from_cache returns a path string when found,
         # None when the repo is unknown, or the _CACHED_NO_EXIST sentinel
@@ -387,6 +436,7 @@ def download_whisper_model(model_name: str) -> bool:
         return False
     try:
         from huggingface_hub import snapshot_download
+
         repo_id = f"Systran/faster-whisper-{model_name}"
         snapshot_download(repo_id=repo_id)
         return True
@@ -397,23 +447,18 @@ def download_whisper_model(model_name: str) -> bool:
 
 # ── venv ───────────────────────────────────────────────────────────
 
+
 def setup_venv(project_dir: Path) -> bool:
     venv_dir = project_dir / "venv"
     if venv_dir.exists():
         return True
-    rc = subprocess.run(
-        ["python3.10", "-m", "venv", str(venv_dir)]
-    ).returncode
+    rc = subprocess.run(["python3.10", "-m", "venv", str(venv_dir)]).returncode
     if rc != 0:
         return False
     pip = venv_dir / "bin/pip"
-    rc = subprocess.run(
-        [str(pip), "install", "--upgrade", "pip", "wheel"]
-    ).returncode
+    rc = subprocess.run([str(pip), "install", "--upgrade", "pip", "wheel"]).returncode
     if rc != 0:
         return False
     req = project_dir / "requirements.txt"
-    rc = subprocess.run(
-        [str(pip), "install", "-r", str(req)]
-    ).returncode
+    rc = subprocess.run([str(pip), "install", "-r", str(req)]).returncode
     return rc == 0

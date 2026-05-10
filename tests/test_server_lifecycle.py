@@ -10,22 +10,22 @@ Run with:
 """
 
 import os
-import sys
-import time
 import signal
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from app.manager import (
-    find_llama_server,
-    find_llama_server_pids,
-    stop_llama_server,
-    is_llama_server_running,
     LLAMA_PID_FILE,
     STATE_DIR,
+    find_llama_server,
+    find_llama_server_pids,
+    is_llama_server_running,
+    stop_llama_server,
 )
 
 
@@ -74,6 +74,7 @@ def _spawn_orphan() -> int:
 
 # ── Unit-level: find_llama_server_pids ───────────────────────────
 
+
 def test_find_pids_returns_list():
     pids = find_llama_server_pids()
     assert isinstance(pids, list)
@@ -99,6 +100,7 @@ def test_find_pids_detects_running_process():
 
 
 # ── Core bug: stop must kill orphaned processes ───────────────────
+
 
 def test_stop_kills_orphan_not_in_pid_file():
     """Regression test for the orphan-process bug.
@@ -126,9 +128,7 @@ def test_stop_kills_orphan_not_in_pid_file():
 
         remaining = find_llama_server_pids()
         alive = [p for p in remaining if _pid_alive(p)]
-        assert alive == [], (
-            f"stop_llama_server() left orphaned processes running: {alive}"
-        )
+        assert alive == [], f"stop_llama_server() left orphaned processes running: {alive}"
     finally:
         # Safety cleanup
         try:
@@ -161,6 +161,7 @@ def test_stop_idempotent():
 
 
 # ── Helpers ───────────────────────────────────────────────────────
+
 
 def _pid_alive(pid: int) -> bool:
     try:

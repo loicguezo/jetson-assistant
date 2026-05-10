@@ -28,17 +28,25 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
 
-from app.config import Config
-from app.audio import find_alsa_device
-from app.history import load_history, save_history, clear_history
-from app.monitor import ram_used_gb
-from app.stt import STT
-from app.pipeline import (
-    SAMPLE_RATE, MicRecorder, warmup_stt, vad_loop, stream_and_speak, load_silero,
-    load_llm, load_tts, print_response_timing,
-)
 from rich.console import Console
 from rich.panel import Panel
+
+from app.audio import find_alsa_device
+from app.config import Config
+from app.history import clear_history, load_history, save_history
+from app.monitor import ram_used_gb
+from app.pipeline import (
+    SAMPLE_RATE,
+    MicRecorder,
+    load_llm,
+    load_silero,
+    load_tts,
+    print_response_timing,
+    stream_and_speak,
+    vad_loop,
+    warmup_stt,
+)
+from app.stt import STT
 
 console = Console()
 
@@ -46,12 +54,14 @@ console = Console()
 def main():
     config = Config.load()
 
-    console.print(Panel.fit(
-        "[bold cyan]Voice Assistant[/bold cyan]\n"
-        "Speak anytime — auto-detects speech\n"
-        "[dim]Ctrl-C to quit[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Voice Assistant[/bold cyan]\n"
+            "Speak anytime — auto-detects speech\n"
+            "[dim]Ctrl-C to quit[/dim]",
+            border_style="cyan",
+        )
+    )
 
     # ── Audio setup ──────────────────────────────────────────────
     mic_hint = config.audio.input_device or "USB Audio"
@@ -71,13 +81,17 @@ def main():
 
     ram_before_stt = ram_used_gb()
     stt = STT(
-        model=config.stt.model, device=config.stt.device,
-        compute_type=config.stt.compute_type, language=config.stt.language,
+        model=config.stt.model,
+        device=config.stt.device,
+        compute_type=config.stt.compute_type,
+        language=config.stt.language,
         beam_size=config.stt.beam_size,
     )
     if not stt.load():
         console.print("[red]STT failed to load — cannot start voice chat.[/red]")
-        console.print("[dim]  Check that faster-whisper and CTranslate2 are installed (see SETUP.md).[/dim]")
+        console.print(
+            "[dim]  Check that faster-whisper and CTranslate2 are installed (see SETUP.md).[/dim]"
+        )
         return
     stt_delta = ram_used_gb() - ram_before_stt
     if stt.cpu_fallback:
@@ -85,8 +99,10 @@ def main():
             f"  [yellow]⚠ STT (faster-whisper, {config.stt.model}, CPU — CUDA load failed!)"
             f"[/yellow][dim]  +{stt_delta:.1f}GB → {ram_used_gb():.1f}GB[/dim]"
         )
-        console.print("  [yellow]  Transcription will be 10–20× slower. "
-                      "Check CTranslate2 CUDA install (see SETUP.md).[/yellow]")
+        console.print(
+            "  [yellow]  Transcription will be 10–20× slower. "
+            "Check CTranslate2 CUDA install (see SETUP.md).[/yellow]"
+        )
     else:
         console.print(
             f"  ✓ STT (faster-whisper, {config.stt.model}, {stt.device.upper()})"
@@ -119,6 +135,7 @@ def main():
         r = tts.synthesize("Ready.")
         if r.get("audio") is not None:
             from app.pipeline import play_audio
+
             play_audio(r["audio"], r["sample_rate"], sink=mic.pa_sink)
 
     max_history = config.llm.memory_turns * 2  # user + assistant per turn
@@ -139,7 +156,7 @@ def main():
                 err = result.get("error", "")
                 console.print(
                     f"[dim]  (not recognized — {segment.duration:.1f}s, "
-                    f"rms={segment.rms:.4f}{', err='+err if err else ''})[/dim]"
+                    f"rms={segment.rms:.4f}{', err=' + err if err else ''})[/dim]"
                 )
                 mic.resume()
                 continue
@@ -161,7 +178,11 @@ def main():
             sys.stdout.flush()
 
             full_resp, dt_llm, ttft = stream_and_speak(
-                llm, tts, text, config.llm.system_prompt, mic.pa_sink,
+                llm,
+                tts,
+                text,
+                config.llm.system_prompt,
+                mic.pa_sink,
                 few_shot=few_shot,
                 first_chunk_words=config.tts.first_chunk_words,
                 max_chunk_words=config.tts.max_chunk_words,

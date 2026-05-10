@@ -11,10 +11,9 @@ Commands:
   test      Test individual components (--llm, --stt, --tts, --vad, --mic, --all)
 """
 
-import os
-import sys
 import select
 import subprocess
+import sys
 import termios
 import tty
 from pathlib import Path
@@ -22,27 +21,48 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 
 import typer
+from rich import box
 from rich.console import Console
 from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
 from rich.table import Table
-from rich.prompt import Prompt, Confirm
-from rich import box
 
 from app.manager import (
-    find_llama_server, find_gguf_models,
-    start_llama_server, stop_llama_server,
-    is_llama_server_running, wait_for_llama_server,
-    read_pid, is_process_running, get_llama_model_name,
-    LLAMA_PID_FILE, LLAMA_LOG_FILE,
+    LLAMA_LOG_FILE,
+    LLAMA_PID_FILE,
+    find_gguf_models,
+    find_llama_server,
+    get_llama_model_name,
+    is_llama_server_running,
+    read_pid,
+    start_llama_server,
+    stop_llama_server,
+    wait_for_llama_server,
 )
-from app.optimize import build_plan, apply_optimizations, restore_optimizations, load_state
-from app.monitor import get_system_stats, format_stats
+from app.monitor import format_stats, get_system_stats
+from app.optimize import (
+    apply_optimizations,
+    build_plan,
+    load_state,
+    restore_optimizations,
+)
 from app.setup_wizard import (
-    check_prerequisites, llama_server_path, clone_llama_cpp, build_llama_cpp,
-    download_model, setup_venv, check_hf_login, hf_login, DownloadAuthError,
-    ctranslate2_has_cuda, install_ctranslate2_cuda,
-    whisper_model_cached, download_whisper_model,
-    LLAMA_DIR, MODELS_DIR, RECOMMENDED_MODELS,
+    LLAMA_DIR,
+    MODELS_DIR,
+    RECOMMENDED_MODELS,
+    DownloadAuthError,
+    build_llama_cpp,
+    check_hf_login,
+    check_prerequisites,
+    clone_llama_cpp,
+    ctranslate2_has_cuda,
+    download_model,
+    download_whisper_model,
+    hf_login,
+    install_ctranslate2_cuda,
+    llama_server_path,
+    setup_venv,
+    whisper_model_cached,
 )
 
 console = Console()
@@ -55,6 +75,7 @@ app = typer.Typer(
 
 
 # ── Countdown prompt ───────────────────────────────────────────────
+
 
 def _countdown_wait(text: str, default_label: str, timeout: int = 5) -> bool:
     """Show a countdown line. Returns True if the user pressed a key before
@@ -113,6 +134,7 @@ def confirm_with_countdown(
 
 # ── setup ─────────────────────────────────────────────────────────
 
+
 @app.command()
 def setup(
     skip_llama: bool = typer.Option(False, "--skip-llama", help="Skip building llama.cpp"),
@@ -120,11 +142,13 @@ def setup(
     skip_venv: bool = typer.Option(False, "--skip-venv", help="Skip Python venv setup"),
 ):
     """First-time setup: build llama.cpp, download a model, set up Python environment."""
-    console.print(Panel.fit(
-        "[bold cyan]Jetson Voice Assistant — Setup[/bold cyan]\n"
-        "[dim]This will build llama.cpp (~15 min) and download a model[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Jetson Voice Assistant — Setup[/bold cyan]\n"
+            "[dim]This will build llama.cpp (~15 min) and download a model[/dim]",
+            border_style="cyan",
+        )
+    )
 
     project_dir = Path(__file__).parent
 
@@ -140,7 +164,9 @@ def setup(
             console.print(f"  [red]✗[/red] {name:8}  not found")
             missing_required.append(name)
         else:
-            console.print(f"  [yellow]![/yellow] {name:8}  not found in PATH [dim](optional — cmake may find CUDA anyway)[/dim]")
+            console.print(
+                f"  [yellow]![/yellow] {name:8}  not found in PATH [dim](optional — cmake may find CUDA anyway)[/dim]"
+            )
             missing_optional.append(name)
 
     if missing_optional:
@@ -169,9 +195,7 @@ def setup(
     elif llama_server_path():
         console.print(f"  [green]✓ Already built[/green]  [dim]{llama_server_path()}[/dim]")
     else:
-        if not Confirm.ask(
-            f"  Build llama.cpp into {LLAMA_DIR}? (~15 min)", default=True
-        ):
+        if not Confirm.ask(f"  Build llama.cpp into {LLAMA_DIR}? (~15 min)", default=True):
             console.print("  [yellow]Skipped.[/yellow]")
         else:
             console.print("  Cloning llama.cpp...", end=" ")
@@ -180,10 +204,7 @@ def setup(
                 raise typer.Exit(1)
             console.print("[green]done[/green]")
 
-            console.print(
-                "  Building with CUDA (ARCH=87)... "
-                "[dim]this takes ~15 minutes[/dim]"
-            )
+            console.print("  Building with CUDA (ARCH=87)... [dim]this takes ~15 minutes[/dim]")
             console.print()
             if not build_llama_cpp():
                 console.print("\n[red]✗ Build failed.[/red]")
@@ -207,7 +228,7 @@ def setup(
         if existing:
             console.print(f"  [green]✓ Models found in {MODELS_DIR}:[/green]")
             for m in existing:
-                console.print(f"    [dim]{m.name}  ({m.stat().st_size/1e9:.1f} GB)[/dim]")
+                console.print(f"    [dim]{m.name}  ({m.stat().st_size / 1e9:.1f} GB)[/dim]")
             if Confirm.ask("  Download an additional model?", default=False):
                 _model_download_dialog()
         else:
@@ -265,12 +286,15 @@ def setup(
     # ── Step 6: TTS voice models ───────────────────────────────
     console.print("\n[bold]Step 6/7 — TTS voice models[/bold]")
 
-    from app.tts import _download_kokoro_models_if_missing, VOICES_DIR
+    from app.tts import VOICES_DIR, _download_kokoro_models_if_missing
+
     model_file = VOICES_DIR / "kokoro-v1.0.onnx"
     voices_file = VOICES_DIR / "voices-v1.0.bin"
 
     if model_file.exists() and voices_file.exists():
-        console.print(f"  [green]✓ Kokoro models already downloaded[/green]  [dim]{VOICES_DIR}[/dim]")
+        console.print(
+            f"  [green]✓ Kokoro models already downloaded[/green]  [dim]{VOICES_DIR}[/dim]"
+        )
     else:
         missing = []
         if not model_file.exists():
@@ -291,6 +315,7 @@ def setup(
     console.print("\n[bold]Step 7/7 — STT model (Whisper)[/bold]")
 
     from app.config import Config
+
     stt_model = Config.load().stt.model
     if whisper_model_cached(stt_model):
         console.print(f"  [green]✓ faster-whisper/{stt_model} already cached[/green]")
@@ -307,24 +332,24 @@ def setup(
 
     # ── Done ───────────────────────────────────────────────────
     console.print()
-    console.print(Panel.fit(
-        "[bold green]Setup complete![/bold green]\n"
-        "Run [cyan]./jetson-assistant start[/cyan] to launch the assistant.",
-        border_style="green",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold green]Setup complete![/bold green]\n"
+            "Run [cyan]./jetson-assistant start[/cyan] to launch the assistant.",
+            border_style="green",
+        )
+    )
 
 
 def _model_download_dialog():
     console.print("\n  [bold]Recommended models:[/bold]")
     for i, m in enumerate(RECOMMENDED_MODELS, 1):
-        license_tag = (
-            f"  [yellow][accept license first][/yellow]" if m.get("license_url") else ""
-        )
+        license_tag = "  [yellow][accept license first][/yellow]" if m.get("license_url") else ""
         console.print(
             f"  [cyan]{i}[/cyan]  {m['name']}  {m['size']}{license_tag}\n"
             f"      [dim]{m['description']}[/dim]"
         )
-    console.print(f"  [cyan]{len(RECOMMENDED_MODELS)+1}[/cyan]  Skip")
+    console.print(f"  [cyan]{len(RECOMMENDED_MODELS) + 1}[/cyan]  Skip")
     console.print()
 
     choice = Prompt.ask(
@@ -341,15 +366,13 @@ def _model_download_dialog():
 
     if m.get("license_url"):
         console.print(
-            f"\n  [yellow]License required.[/yellow] Accept at:\n"
-            f"  [dim]{m['license_url']}[/dim]\n"
+            f"\n  [yellow]License required.[/yellow] Accept at:\n  [dim]{m['license_url']}[/dim]\n"
         )
 
     # HuggingFace now requires a token for all downloads
     if not check_hf_login():
         console.print(
-            "  [yellow]HuggingFace login required[/yellow] "
-            "(needed for all model downloads).\n"
+            "  [yellow]HuggingFace login required[/yellow] (needed for all model downloads).\n"
         )
         if Confirm.ask("  Log in now?", default=True):
             if not hf_login():
@@ -373,9 +396,10 @@ def _model_download_dialog():
             "  1. Run [dim]hf auth login[/dim] and enter your token\n"
             + (
                 f"  2. Accept the license at [dim]{m['license_url']}[/dim]\n"
-                if m.get("license_url") else ""
-            ) +
-            "  Then re-run: [dim]./jetson-assistant setup --skip-llama --skip-venv[/dim]"
+                if m.get("license_url")
+                else ""
+            )
+            + "  Then re-run: [dim]./jetson-assistant setup --skip-llama --skip-venv[/dim]"
         )
         return
 
@@ -391,24 +415,36 @@ def _model_download_dialog():
 
 # ── start ─────────────────────────────────────────────────────────
 
+
 @app.command()
 def start(
     model: str = typer.Option(None, "--model", "-m", help="Path to GGUF model file"),
     port: int = typer.Option(8080, "--port", help="llama-server port"),
     ctx: int = typer.Option(8192, "--ctx", help="Context window size"),
-    keep_server: bool = typer.Option(False, "--keep-server", "-k",
-                                     help="Keep llama-server running after voice chat exits"),
-    server_only: bool = typer.Option(False, "--server-only",
-                                     help="Start llama-server only, skip voice chat"),
-    text: bool = typer.Option(False, "--text", "-t",
-                              help="Text mode: type your messages, no microphone required"),
+    keep_server: bool = typer.Option(
+        False,
+        "--keep-server",
+        "-k",
+        help="Keep llama-server running after voice chat exits",
+    ),
+    server_only: bool = typer.Option(
+        False, "--server-only", help="Start llama-server only, skip voice chat"
+    ),
+    text: bool = typer.Option(
+        False,
+        "--text",
+        "-t",
+        help="Text mode: type your messages, no microphone required",
+    ),
 ):
     """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
     mode_label = "Text Assistant" if text else "Voice Assistant"
-    console.print(Panel.fit(
-        f"[bold cyan]Jetson {mode_label}[/bold cyan]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            f"[bold cyan]Jetson {mode_label}[/bold cyan]",
+            border_style="cyan",
+        )
+    )
 
     # ── Check llama-server binary ──────────────────────────────
     llama_bin = find_llama_server()
@@ -425,8 +461,10 @@ def start(
         if not models:
             console.print("[red]✗ No .gguf models found.[/red]")
             console.print("  Download a model first, e.g.:")
-            console.print("  [dim]huggingface-cli download bartowski/gemma-3-4b-it-GGUF "
-                          "--include 'gemma-3-4b-it-Q4_K_M.gguf' --local-dir ~/models[/dim]")
+            console.print(
+                "  [dim]huggingface-cli download bartowski/gemma-3-4b-it-GGUF "
+                "--include 'gemma-3-4b-it-Q4_K_M.gguf' --local-dir ~/models[/dim]"
+            )
             raise typer.Exit(1)
 
         console.print("\n[bold]Available models:[/bold]")
@@ -450,8 +488,10 @@ def start(
     # ── Check if server already running ───────────────────────
     if is_llama_server_running():
         running_model = get_llama_model_name()
-        console.print(f"\n[yellow]llama-server already running[/yellow]"
-                      + (f" ({running_model})" if running_model else ""))
+        console.print(
+            "\n[yellow]llama-server already running[/yellow]"
+            + (f" ({running_model})" if running_model else "")
+        )
         if not confirm_with_countdown("Stop it and start fresh?", default=False):
             console.print("  Using existing server.")
         else:
@@ -463,7 +503,8 @@ def start(
         _launch_server(model_path, port, ctx)
 
     # ── Conversation history ───────────────────────────────────
-    from app.history import has_history, clear_history
+    from app.history import clear_history, has_history
+
     if has_history():
         if confirm_with_countdown("Clear conversation history?", default=False):
             clear_history()
@@ -471,8 +512,9 @@ def start(
 
     # ── Start chat ────────────────────────────────────────────
     if server_only:
-        console.print("\n  [green]llama-server is running.[/green]  "
-                      "[dim](--server-only: skipping chat)[/dim]")
+        console.print(
+            "\n  [green]llama-server is running.[/green]  [dim](--server-only: skipping chat)[/dim]"
+        )
         console.print("  Stop with: [dim]./jetson-assistant stop[/dim]")
         return
 
@@ -485,7 +527,7 @@ def start(
 
     try:
         result = subprocess.run([sys.executable, str(chat_script)])
-        if result.returncode not in (0, -2):   # -2 = SIGINT (Ctrl+C), expected
+        if result.returncode not in (0, -2):  # -2 = SIGINT (Ctrl+C), expected
             console.print(f"\n[yellow]⚠ Chat exited with code {result.returncode}[/yellow]")
     except KeyboardInterrupt:
         pass
@@ -518,6 +560,7 @@ def _launch_server(model_path: Path, port: int, ctx: int):
 
 # ── stop ──────────────────────────────────────────────────────────
 
+
 @app.command()
 def stop():
     """Stop llama-server and any running voice chat."""
@@ -531,7 +574,10 @@ def stop():
     else:
         console.print("  [dim]llama-server not running[/dim]")
 
-    for script, label in [("run_voice_chat.py", "voice-chat"), ("run_text_chat.py", "text-chat")]:
+    for script, label in [
+        ("run_voice_chat.py", "voice-chat"),
+        ("run_text_chat.py", "text-chat"),
+    ]:
         result = subprocess.run(["pkill", "-f", script], capture_output=True)
         if result.returncode == 0:
             console.print(f"  Stopped {label} process.")
@@ -542,6 +588,7 @@ def stop():
 
 
 # ── status ────────────────────────────────────────────────────────
+
 
 @app.command()
 def status():
@@ -557,8 +604,7 @@ def status():
     if is_llama_server_running():
         model = get_llama_model_name() or "unknown"
         pid = read_pid(LLAMA_PID_FILE)
-        table.add_row("llama-server", "[green]running[/green]",
-                      f"pid {pid}  model: {model}")
+        table.add_row("llama-server", "[green]running[/green]", f"pid {pid}  model: {model}")
     else:
         table.add_row("llama-server", "[red]stopped[/red]", "")
 
@@ -580,6 +626,7 @@ def status():
 
     # system stats + power mode
     from app.monitor import get_power_mode
+
     stats = get_system_stats()
     power = get_power_mode()
     sys_detail = format_stats(stats)
@@ -590,8 +637,7 @@ def status():
     # optimization state
     state = load_state()
     if state:
-        table.add_row("optimized", "[yellow]yes[/yellow]",
-                      "optimize --restore to undo")
+        table.add_row("optimized", "[yellow]yes[/yellow]", "optimize --restore to undo")
     else:
         table.add_row("optimized", "[dim]no[/dim]", "optimize to apply")
 
@@ -601,9 +647,12 @@ def status():
 
 # ── optimize ──────────────────────────────────────────────────────
 
+
 @app.command()
 def optimize(
-    restore: bool = typer.Option(False, "--restore", help="Restore system to pre-optimization state"),
+    restore: bool = typer.Option(
+        False, "--restore", help="Restore system to pre-optimization state"
+    ),
     status: bool = typer.Option(False, "--status", help="Show current optimization state"),
     all_: bool = typer.Option(False, "--all", help="Apply all optimizations without prompting"),
 ):
@@ -631,23 +680,25 @@ def _optimize_status():
         return
 
     applied = (
-        state.get("applied", []) +
-        state.get("services_disabled", []) +
-        state.get("zram_disabled", [])
+        state.get("applied", [])
+        + state.get("services_disabled", [])
+        + state.get("zram_disabled", [])
     )
     console.print(f"  [yellow]Optimized[/yellow] — {len(applied)} change(s) active:\n")
     for item in applied:
         console.print(f"    [dim]• {item}[/dim]")
-    console.print(f"\n  Run [bold]optimize --restore[/bold] to revert.")
+    console.print("\n  Run [bold]optimize --restore[/bold] to revert.")
     console.print()
 
 
 def _optimize_apply(skip_prompts: bool = False):
-    console.print(Panel.fit(
-        "[bold yellow]Memory Optimization[/bold yellow]\n"
-        "[dim]Safe, reversible system tuning for Jetson Orin Nano[/dim]",
-        border_style="yellow",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold yellow]Memory Optimization[/bold yellow]\n"
+            "[dim]Safe, reversible system tuning for Jetson Orin Nano[/dim]",
+            border_style="yellow",
+        )
+    )
 
     if load_state():
         console.print("[yellow]Optimizations already applied.[/yellow]")
@@ -673,8 +724,10 @@ def _optimize_apply(skip_prompts: bool = False):
     # ── GUI / target ──────────────────────────────────────────
     row = plan["target"]
     if row["change"]:
-        console.print(f"  [bold]Disable desktop GUI[/bold] (switch to multi-user.target)"
-                      f"  [dim]~{row['savings_mb']} MB[/dim]")
+        console.print(
+            f"  [bold]Disable desktop GUI[/bold] (switch to multi-user.target)"
+            f"  [dim]~{row['savings_mb']} MB[/dim]"
+        )
         approved["target"] = _ask("  Apply?", default=True)
     else:
         console.print("  [dim]GUI already disabled (multi-user.target) — skipping[/dim]")
@@ -695,8 +748,10 @@ def _optimize_apply(skip_prompts: bool = False):
     row = plan["zram"]
     if row["active"]:
         console.print()
-        console.print(f"  [bold]Disable zram compressed swap[/bold]"
-                      f"  [dim]~{row['savings_mb']} MB  (use NVMe swap instead)[/dim]")
+        console.print(
+            f"  [bold]Disable zram compressed swap[/bold]"
+            f"  [dim]~{row['savings_mb']} MB  (use NVMe swap instead)[/dim]"
+        )
         approved["zram"] = _ask("  Apply?", default=True)
     else:
         console.print("  [dim]zram not active — skipping[/dim]")
@@ -705,36 +760,50 @@ def _optimize_apply(skip_prompts: bool = False):
     row = plan["jetson_clocks"]
     if row["available"]:
         console.print()
-        console.print("  [bold]Set all CPU/GPU clocks to maximum[/bold]  [dim](jetson_clocks)[/dim]")
+        console.print(
+            "  [bold]Set all CPU/GPU clocks to maximum[/bold]  [dim](jetson_clocks)[/dim]"
+        )
         approved["jetson_clocks"] = _ask("  Apply?", default=True)
     else:
         console.print("  [dim]jetson_clocks not found — skipping[/dim]")
 
     # ── Nothing selected ─────────────────────────────────────
-    if (not approved["target"] and not approved["services_to_disable"]
-            and not approved["zram"] and not approved["jetson_clocks"]):
+    if (
+        not approved["target"]
+        and not approved["services_to_disable"]
+        and not approved["zram"]
+        and not approved["jetson_clocks"]
+    ):
         console.print("\n[yellow]Nothing selected — no changes made.[/yellow]")
         raise typer.Exit()
 
     # ── Filter plan and apply ─────────────────────────────────
     filtered_plan = {
         "target": {**plan["target"], "change": approved["target"]},
-        "services": {**plan["services"],
-                     "to_disable": {s: plan["services"]["to_disable"][s]
-                                    for s in approved["services_to_disable"]}},
-        "zram":   {**plan["zram"], "active": approved["zram"],
-                   "to_disable": plan["zram"]["to_disable"] if approved["zram"] else {}},
-        "jetson_clocks": {**plan["jetson_clocks"],
-                          "available": approved["jetson_clocks"]},
+        "services": {
+            **plan["services"],
+            "to_disable": {
+                s: plan["services"]["to_disable"][s] for s in approved["services_to_disable"]
+            },
+        },
+        "zram": {
+            **plan["zram"],
+            "active": approved["zram"],
+            "to_disable": plan["zram"]["to_disable"] if approved["zram"] else {},
+        },
+        "jetson_clocks": {
+            **plan["jetson_clocks"],
+            "available": approved["jetson_clocks"],
+        },
     }
 
     console.print("\n[bold]Applying...[/bold]")
     state = apply_optimizations(filtered_plan)
 
     n = (
-        len(state.get("services_disabled", [])) +
-        len(state.get("zram_disabled", [])) +
-        len(state.get("applied", []))
+        len(state.get("services_disabled", []))
+        + len(state.get("zram_disabled", []))
+        + len(state.get("applied", []))
     )
     console.print(f"\n[green]✓ Done — {n} changes applied.[/green]")
     console.print("  [dim]A reboot is required to fully apply all changes.[/dim]")
@@ -750,15 +819,17 @@ def _optimize_restore():
         console.print("[yellow]No saved optimization state found. Nothing to restore.[/yellow]")
         raise typer.Exit()
 
-    console.print(Panel.fit(
-        "[bold]Restore System[/bold]\n[dim]Reverts all applied optimizations[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold]Restore System[/bold]\n[dim]Reverts all applied optimizations[/dim]",
+            border_style="cyan",
+        )
+    )
 
     applied = (
-        state.get("applied", []) +
-        state.get("services_disabled", []) +
-        state.get("zram_disabled", [])
+        state.get("applied", [])
+        + state.get("services_disabled", [])
+        + state.get("zram_disabled", [])
     )
     console.print(f"\n  Will revert: {len(applied)} change(s)")
     for item in applied:
@@ -783,13 +854,16 @@ def _optimize_restore():
 
 # ── test ──────────────────────────────────────────────────────────
 
+
 @app.command()
 def test(
     llm: bool = typer.Option(False, "--llm", help="Test LLM (requires llama-server running)"),
     stt: bool = typer.Option(False, "--stt", help="Test speech-to-text (records 3 seconds)"),
     tts: bool = typer.Option(False, "--tts", help="Test text-to-speech (plays a sentence)"),
     vad: bool = typer.Option(False, "--vad", help="Test VAD (shows mic activity for 5 seconds)"),
-    mic: bool = typer.Option(False, "--mic", help="Test microphone (lists devices, records 3s, plays back)"),
+    mic: bool = typer.Option(
+        False, "--mic", help="Test microphone (lists devices, records 3s, plays back)"
+    ),
     all_: bool = typer.Option(False, "--all", help="Run all component tests"),
 ):
     """Test individual pipeline components."""
@@ -798,13 +872,19 @@ def test(
         raise typer.Exit(1)
 
     from app.config import Config
-    from app.test_components import test_llm, test_stt, test_tts, test_vad, test_mic
+    from app.test_components import test_llm, test_mic, test_stt, test_tts, test_vad
 
     cfg = Config.load()
 
     if llm or all_:
-        test_llm(cfg, start_llama_server, stop_llama_server,
-                 is_llama_server_running, wait_for_llama_server, find_gguf_models)
+        test_llm(
+            cfg,
+            start_llama_server,
+            stop_llama_server,
+            is_llama_server_running,
+            wait_for_llama_server,
+            find_gguf_models,
+        )
     if stt or all_:
         test_stt(cfg)
     if tts or all_:
@@ -817,17 +897,20 @@ def test(
 
 # ── benchmark ─────────────────────────────────────────────────────
 
+
 @app.command()
 def benchmark():
     """Benchmark TTS → STT → LLM with fixed inputs. No microphone required."""
-    from app.config import Config
     from app.benchmark import run_benchmark
+    from app.config import Config
 
-    console.print(Panel.fit(
-        "[bold cyan]Pipeline Benchmark[/bold cyan]\n"
-        "[dim]Fixed inputs — results are comparable across runs[/dim]",
-        border_style="cyan",
-    ))
+    console.print(
+        Panel.fit(
+            "[bold cyan]Pipeline Benchmark[/bold cyan]\n"
+            "[dim]Fixed inputs — results are comparable across runs[/dim]",
+            border_style="cyan",
+        )
+    )
 
     run_benchmark(
         cfg=Config.load(),
@@ -844,7 +927,7 @@ def history(
     clear: bool = typer.Option(False, "--clear", "-c", help="Clear conversation history"),
 ):
     """Show or clear conversation history."""
-    from app.history import HISTORY_FILE, clear_history, load_history, has_history
+    from app.history import HISTORY_FILE, clear_history, has_history, load_history
 
     if clear:
         clear_history()
@@ -862,7 +945,7 @@ def history(
     for i in range(0, len(turns), 2):
         user = turns[i].get("content", "")
         asst = turns[i + 1].get("content", "") if i + 1 < len(turns) else ""
-        console.print(f"  [dim]{i//2 + 1}.[/dim] [green]You:[/green] {user[:80]}")
+        console.print(f"  [dim]{i // 2 + 1}.[/dim] [green]You:[/green] {user[:80]}")
         console.print(f"     [magenta]Asst:[/magenta] {asst[:80]}")
 
 

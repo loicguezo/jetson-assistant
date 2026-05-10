@@ -53,6 +53,20 @@ concluded "Kokoro TTS can't use CUDA on Jetson" based on ORT error messages — 
 revealed the real cause was two conflicting onnxruntime packages installed simultaneously.
 The fix was a 2-line reinstall. When evidence contradicts expectations, search first.
 
+**Docs rule:** Every PR that changes user-visible behaviour, install steps, or the
+known-issues table must update the relevant file before merge:
+- `README.md` — stack table, roadmap checklist
+- `WORKFLOW.md` — known-issues table, settings table, open issues list
+- `SETUP.md` — if install steps or dependencies changed
+
+**Side-issue rule:** While working on an issue, if you discover an unrelated bug,
+missing feature, or improvement idea — open a GitHub issue for it immediately (REST API,
+see PR workflow above) and continue with the current task. Don't let good findings get lost
+and don't context-switch mid-task. The new issue can be picked up in a later session.
+
+**Code quality:** Run `ruff check . --fix && ruff format .` before every commit.
+`pre-commit install` sets this up as a git hook automatically after cloning.
+
 ## llama-server lifecycle
 
 ```bash

@@ -25,6 +25,10 @@ kokoro-onnx>=0.4.0
 # Testing
 pytest>=7.0
 
+# Code quality (dev only)
+ruff>=0.4.0
+pre-commit>=3.0
+
 # Jetson-specific — ONNX Runtime GPU (replaces the PyPI onnxruntime wheel):
 #   pip uninstall -y onnxruntime onnxruntime-gpu
 #   pip install --force-reinstall numpy==1.26.4 onnxruntime-gpu==1.23.0 \

@@ -4,7 +4,6 @@ import json
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional
 
 STATE_DIR = Path.home() / ".jetson-assistant"
 OPT_STATE_FILE = STATE_DIR / "optimization-state.json"
@@ -14,15 +13,15 @@ OPT_STATE_FILE = STATE_DIR / "optimization-state.json"
 # default_on=False means the prompt defaults to "No" — use for services
 # that are intentionally kept in some setups (e.g. bluetooth for BT audio).
 _OPTIONAL_SERVICES = [
-    ("bluetooth.service",          "Bluetooth (disable only if not using BT audio)", False),
-    ("avahi-daemon.service",       "Avahi/mDNS daemon",                              True),
-    ("cups.service",               "CUPS print server",                              True),
-    ("cups-browsed.service",       "CUPS network printer discovery",                 True),
-    ("ModemManager.service",       "ModemManager (cellular modems)",                 True),
-    ("snapd.service",              "Snap package daemon",                            True),
-    ("apt-daily.service",          "Unattended apt downloads",                       True),
-    ("apt-daily-upgrade.service",  "Unattended apt upgrades",                        True),
-    ("unattended-upgrades.service","Unattended upgrades",                            True),
+    ("bluetooth.service", "Bluetooth (disable only if not using BT audio)", False),
+    ("avahi-daemon.service", "Avahi/mDNS daemon", True),
+    ("cups.service", "CUPS print server", True),
+    ("cups-browsed.service", "CUPS network printer discovery", True),
+    ("ModemManager.service", "ModemManager (cellular modems)", True),
+    ("snapd.service", "Snap package daemon", True),
+    ("apt-daily.service", "Unattended apt downloads", True),
+    ("apt-daily-upgrade.service", "Unattended apt upgrades", True),
+    ("unattended-upgrades.service", "Unattended upgrades", True),
 ]
 
 _ZRAM_SERVICES = [
@@ -34,6 +33,7 @@ JETSON_CLOCKS_STORE = STATE_DIR / "jetson_clocks_backup.conf"
 
 
 # ── Helpers ────────────────────────────────────────────────────────
+
 
 def _run(cmd: list[str], sudo: bool = False) -> tuple[int, str]:
     if sudo:
@@ -69,12 +69,13 @@ def _has_jetson_clocks() -> bool:
 
 # ── State persistence ──────────────────────────────────────────────
 
+
 def save_state(state: dict):
     STATE_DIR.mkdir(parents=True, exist_ok=True)
     OPT_STATE_FILE.write_text(json.dumps(state, indent=2))
 
 
-def load_state() -> Optional[dict]:
+def load_state() -> dict | None:
     if not OPT_STATE_FILE.exists():
         return None
     try:
@@ -84,6 +85,7 @@ def load_state() -> Optional[dict]:
 
 
 # ── Optimization plan ──────────────────────────────────────────────
+
 
 def build_plan() -> dict:
     """Inspect the system and return a plan of what can be optimized."""
@@ -129,10 +131,16 @@ def build_plan() -> dict:
 
 # ── Apply ──────────────────────────────────────────────────────────
 
+
 def apply_optimizations(plan: dict) -> dict:
     """Apply the plan and return saved state for restore."""
-    STATE_DIR.mkdir(parents=True, exist_ok=True)   # ensure dir exists before --store writes here
-    state = {"applied": [], "target_before": _get_default_target(), "services_disabled": [], "zram_disabled": []}
+    STATE_DIR.mkdir(parents=True, exist_ok=True)  # ensure dir exists before --store writes here
+    state = {
+        "applied": [],
+        "target_before": _get_default_target(),
+        "services_disabled": [],
+        "zram_disabled": [],
+    }
 
     if plan["target"]["change"]:
         rc, out = _run(["systemctl", "set-default", "multi-user.target"], sudo=True)
@@ -161,6 +169,7 @@ def apply_optimizations(plan: dict) -> dict:
 
 
 # ── Restore ────────────────────────────────────────────────────────
+
 
 def restore_optimizations(state: dict) -> list[str]:
     """Revert optimizations from saved state. Returns list of restored items."""

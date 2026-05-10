@@ -1,10 +1,10 @@
 """Component tests for the voice pipeline."""
 
 import os
-import sys
-import time
 import subprocess
+import sys
 import tempfile
+import time
 
 import numpy as np
 from rich.console import Console
@@ -70,7 +70,6 @@ def test_stt(cfg):
     console.print("\n[bold cyan]── STT test ──[/bold cyan]")
     try:
         import sounddevice as sd
-        import numpy as np
     except ImportError:
         console.print("  [red]✗ sounddevice not installed.[/red]")
         return
@@ -137,6 +136,7 @@ def test_tts(cfg):
     console.print(f"  Synthesized in [dim]{elapsed:.2f}s[/dim] — playing...")
     try:
         import sounddevice as sd
+
         sd.play(result["audio"], samplerate=result.get("sample_rate", 24000))
         sd.wait()
         console.print("  [green]✓ Playback complete[/green]")
@@ -154,20 +154,22 @@ def test_mic(cfg):
 
     # ── List available devices ────────────────────────────────────
     r = subprocess.run(["arecord", "-l"], capture_output=True, text=True)
-    alsa_lines = [l.strip() for l in r.stdout.splitlines() if "card" in l.lower()]
+    alsa_lines = [line.strip() for line in r.stdout.splitlines() if "card" in line.lower()]
     if alsa_lines:
         console.print("  [dim]ALSA capture devices:[/dim]")
-        for l in alsa_lines:
-            console.print(f"    {l}")
+        for line in alsa_lines:
+            console.print(f"    {line}")
 
-    r = subprocess.run(["pactl", "list", "short", "sources"],
-                       capture_output=True, text=True)
-    pa_lines = [l.strip() for l in r.stdout.splitlines()
-                if l.strip() and "monitor" not in l.lower()]
+    r = subprocess.run(["pactl", "list", "short", "sources"], capture_output=True, text=True)
+    pa_lines = [
+        line.strip()
+        for line in r.stdout.splitlines()
+        if line.strip() and "monitor" not in line.lower()
+    ]
     if pa_lines:
         console.print("  [dim]PulseAudio sources:[/dim]")
-        for l in pa_lines:
-            console.print(f"    {l}")
+        for line in pa_lines:
+            console.print(f"    {line}")
 
     # ── Pick device ───────────────────────────────────────────────
     mic_hint = cfg.audio.input_device or "USB Audio"
@@ -188,12 +190,23 @@ def test_mic(cfg):
     # ── Record 3 seconds with live RMS bar ────────────────────────
     SAMPLE_RATE = 16000
     CHUNK_SAMPLES = 512
-    CHUNK_BYTES = CHUNK_SAMPLES * 2   # int16
+    CHUNK_BYTES = CHUNK_SAMPLES * 2  # int16
     duration = 3
 
     console.print(f"  Recording {duration}s — [bold]speak now...[/bold]\n")
-    rec_cmd = ["arecord", "-D", plughw, "-f", "S16_LE",
-               "-r", str(SAMPLE_RATE), "-c", "1", "-t", "raw"]
+    rec_cmd = [
+        "arecord",
+        "-D",
+        plughw,
+        "-f",
+        "S16_LE",
+        "-r",
+        str(SAMPLE_RATE),
+        "-c",
+        "1",
+        "-t",
+        "raw",
+    ]
 
     with tempfile.NamedTemporaryFile(suffix=".raw", delete=False) as tmp:
         tmp_path = tmp.name
@@ -211,7 +224,7 @@ def test_mic(cfg):
                 break
             all_chunks.append(raw)
             pcm = np.frombuffer(raw, dtype=np.int16).astype(np.float32) / 32768.0
-            rms = float(np.sqrt(np.mean(pcm ** 2)))
+            rms = float(np.sqrt(np.mean(pcm**2)))
             max_rms = max(max_rms, rms)
             bar_len = min(int(rms / 0.05 * 30), 30)
             color = "green" if rms > 0.01 else "yellow" if rms > 0.002 else "red"
@@ -248,9 +261,13 @@ def test_mic(cfg):
 
     peak = max_rms
     if peak < 0.002:
-        console.print(f"  [red]✗ Silence detected (peak RMS {peak:.4f}) — mic may not be connected[/red]")
+        console.print(
+            f"  [red]✗ Silence detected (peak RMS {peak:.4f}) — mic may not be connected[/red]"
+        )
     elif peak < 0.01:
-        console.print(f"  [yellow]⚠ Very quiet signal (peak RMS {peak:.4f}) — check mic gain[/yellow]")
+        console.print(
+            f"  [yellow]⚠ Very quiet signal (peak RMS {peak:.4f}) — check mic gain[/yellow]"
+        )
     else:
         console.print(f"  [green]✓ Signal looks good (peak RMS {peak:.4f})[/green]")
 
@@ -259,12 +276,12 @@ def test_mic(cfg):
         return
     console.print("  Playing back recording...")
     try:
-        import io, wave as _wave
-        r = subprocess.run(["pactl", "list", "short", "sinks"],
-                           capture_output=True, text=True)
+        import io
+        import wave as _wave
+
+        r = subprocess.run(["pactl", "list", "short", "sinks"], capture_output=True, text=True)
         default_sink = next(
-            (l.split()[1] for l in r.stdout.splitlines() if l.strip()),
-            None
+            (line.split()[1] for line in r.stdout.splitlines() if line.strip()), None
         )
         if default_sink:
             wav_buf = io.BytesIO()
@@ -275,7 +292,8 @@ def test_mic(cfg):
                 wf.writeframes(raw_audio)
             p = subprocess.Popen(
                 ["paplay", f"--device={default_sink}"],
-                stdin=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                stdin=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
             )
             try:
                 p.stdin.write(wav_buf.getvalue())
@@ -288,8 +306,19 @@ def test_mic(cfg):
                 play_path = tf.name
             try:
                 subprocess.run(
-                    ["aplay", "-f", "S16_LE", "-r", str(SAMPLE_RATE),
-                     "-c", "1", "-t", "raw", "-q", play_path],
+                    [
+                        "aplay",
+                        "-f",
+                        "S16_LE",
+                        "-r",
+                        str(SAMPLE_RATE),
+                        "-c",
+                        "1",
+                        "-t",
+                        "raw",
+                        "-q",
+                        play_path,
+                    ],
                     timeout=10,
                 )
             finally:
@@ -327,20 +356,25 @@ def test_vad(cfg):
     console.print("[green]ok[/green]")
 
     sample_rate = 16000
-    chunk_size  = int(sample_rate * 32 / 1000)  # 512 samples — Silero requires exactly 32ms
-    duration    = 5
+    chunk_size = int(sample_rate * 32 / 1000)  # 512 samples — Silero requires exactly 32ms
+    duration = 5
 
     console.print(f"  Listening for {duration}s — [bold]speak or stay silent...[/bold]\n")
 
     t_end = time.time() + duration
-    with sd.InputStream(samplerate=sample_rate, channels=1,
-                        dtype="int16", blocksize=chunk_size) as stream:
+    with sd.InputStream(
+        samplerate=sample_rate, channels=1, dtype="int16", blocksize=chunk_size
+    ) as stream:
         while time.time() < t_end:
             raw, _ = stream.read(chunk_size)
-            score   = vad(raw.tobytes())
+            score = vad(raw.tobytes())
             bar_len = int(score * 30)
-            bar     = "[green]" + "█" * bar_len + "[/green]" + "░" * (30 - bar_len)
-            label   = "[bold green] SPEECH[/bold green]" if score > cfg.vad.silero_threshold else "[dim] silence[/dim]"
+            bar = "[green]" + "█" * bar_len + "[/green]" + "░" * (30 - bar_len)
+            label = (
+                "[bold green] SPEECH[/bold green]"
+                if score > cfg.vad.silero_threshold
+                else "[dim] silence[/dim]"
+            )
             console.print(f"  {bar} {score:.2f}{label}", end="\r", highlight=False)
 
     console.print("\n  [green]✓ VAD test complete[/green]")

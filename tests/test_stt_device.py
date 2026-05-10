@@ -16,8 +16,10 @@ from app.stt import STT
 def _cuda_available() -> bool:
     try:
         from app.stt import _preload_ctranslate2_lib
+
         _preload_ctranslate2_lib()
         import ctranslate2
+
         return ctranslate2.get_cuda_device_count() > 0
     except Exception:
         return False
@@ -32,8 +34,7 @@ def test_stt_loads_on_cuda():
     ok = stt.load()
     assert ok, "STT failed to load entirely"
     assert not stt.cpu_fallback, (
-        "STT fell back to CPU despite CUDA being available. "
-        "Check CTranslate2 CUDA installation."
+        "STT fell back to CPU despite CUDA being available. Check CTranslate2 CUDA installation."
     )
     assert stt.device == "cuda", f"Expected device='cuda', got '{stt.device}'"
     stt.unload()
@@ -41,7 +42,7 @@ def test_stt_loads_on_cuda():
 
 def test_stt_cpu_fallback_flag_set_on_forced_cpu():
     """cpu_fallback flag must be True when CUDA load is forced to fail."""
-    from unittest.mock import patch, MagicMock
+    from unittest.mock import MagicMock, patch
 
     call_count = [0]
 

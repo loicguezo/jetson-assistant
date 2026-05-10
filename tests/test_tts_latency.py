@@ -8,11 +8,11 @@ With Kokoro CUDA RTF ~0.14x and speech ~2.5 w/s:
 So synthesis is ~7x faster than playback — plenty of overlap margin.
 """
 
-import sys
-import time
 import json
 import select
 import subprocess
+import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -37,8 +37,11 @@ def tts_proc():
         pytest.skip("Kokoro model not downloaded")
     proc = subprocess.Popen(
         [sys.executable, str(WORKER), "--model-dir", str(VOICES_DIR)],
-        stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, text=True, bufsize=1,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+        bufsize=1,
     )
     ready = select.select([proc.stdout], [], [], 30.0)[0]
     assert ready, "TTS worker timed out"
@@ -64,7 +67,10 @@ def test_synthesis_faster_than_realtime(tts_proc):
     for text in CHUNKS:
         dt, resp = _synthesize(proc, text)
         assert "audio_b64" in resp, f"Synthesis failed: {resp}"
-        import base64, numpy as np
+        import base64
+
+        import numpy as np
+
         audio = np.frombuffer(base64.b64decode(resp["audio_b64"]), dtype=np.int16)
         sr = resp["sample_rate"]
         play_time = len(audio) / sr
@@ -87,7 +93,10 @@ def test_synthesis_overlap_margin(tts_proc):
         dt, resp = _synthesize(proc, text)
         if "audio_b64" not in resp:
             continue
-        import base64, numpy as np
+        import base64
+
+        import numpy as np
+
         audio = np.frombuffer(base64.b64decode(resp["audio_b64"]), dtype=np.int16)
         play_time = len(audio) / resp["sample_rate"]
         if prev_play_time is not None:

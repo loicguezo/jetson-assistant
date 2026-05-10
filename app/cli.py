@@ -16,15 +16,14 @@
 """CLI — text chat, single question, system info."""
 
 import time
-from typing import Optional
 
+import typer
 from rich.console import Console
 from rich.prompt import Prompt
-import typer
 
 from app.config import Config
 from app.llm import LLM
-from app.monitor import get_system_stats, format_stats
+from app.monitor import format_stats, get_system_stats
 
 console = Console()
 app = typer.Typer(name="assistant", help="Jetson Voice Assistant", add_completion=False)
@@ -32,9 +31,12 @@ app = typer.Typer(name="assistant", help="Jetson Voice Assistant", add_completio
 
 def _load_llm(config: Config) -> LLM:
     llm = LLM(
-        model=config.llm.model, base_url=config.llm.base_url,
-        backend=config.llm.backend, max_tokens=config.llm.max_tokens,
-        temperature=config.llm.temperature, timeout=config.llm.timeout,
+        model=config.llm.model,
+        base_url=config.llm.base_url,
+        backend=config.llm.backend,
+        max_tokens=config.llm.max_tokens,
+        temperature=config.llm.temperature,
+        timeout=config.llm.timeout,
         system_prompt=config.llm.system_prompt,
     )
     if not llm.load():
@@ -66,8 +68,8 @@ def _stream(llm: LLM, text: str, system_prompt: str):
 
 @app.command()
 def chat(
-    model: Optional[str] = typer.Option(None, "--model", "-m"),
-    config_path: Optional[str] = typer.Option(None, "--config", "-c"),
+    model: str | None = typer.Option(None, "--model", "-m"),
+    config_path: str | None = typer.Option(None, "--config", "-c"),
 ):
     """Interactive text chat."""
     config = Config.load(config_path)
@@ -96,7 +98,9 @@ def chat(
                 console.print("[magenta]Assistant[/magenta]: ", end="")
                 _, tps, ttft, tok = _stream(llm, text, config.llm.system_prompt)
                 console.print()
-                console.print(f"[dim]  TTFT: {ttft:.0f}ms | {tps:.1f} tok/s | {tok} tokens | {format_stats(get_system_stats())}[/dim]")
+                console.print(
+                    f"[dim]  TTFT: {ttft:.0f}ms | {tps:.1f} tok/s | {tok} tokens | {format_stats(get_system_stats())}[/dim]"
+                )
             except KeyboardInterrupt:
                 console.print("\n[yellow]Interrupted[/yellow]")
                 continue
@@ -108,8 +112,8 @@ def chat(
 @app.command()
 def ask(
     question: str = typer.Argument(..., help="Question to ask"),
-    model: Optional[str] = typer.Option(None, "--model", "-m"),
-    config_path: Optional[str] = typer.Option(None, "--config", "-c"),
+    model: str | None = typer.Option(None, "--model", "-m"),
+    config_path: str | None = typer.Option(None, "--config", "-c"),
 ):
     """Ask a single question."""
     config = Config.load(config_path)
@@ -132,6 +136,7 @@ def info():
     config = Config.load()
     try:
         import httpx
+
         with httpx.Client(timeout=5.0) as c:
             if config.llm.backend == "openai":
                 r = c.get(f"{config.llm.base_url.rstrip('/')}/v1/models")
@@ -145,7 +150,10 @@ def info():
                     console.print(f"[green]✓ Ollama[/green]: {', '.join(names[:3])}")
     except Exception:
         console.print(f"[red]✗ LLM not running at {config.llm.base_url}[/red]")
-    for lib, name in [("faster_whisper", "faster-whisper"), ("kokoro_onnx", "kokoro-onnx")]:
+    for lib, name in [
+        ("faster_whisper", "faster-whisper"),
+        ("kokoro_onnx", "kokoro-onnx"),
+    ]:
         try:
             __import__(lib)
             console.print(f"[green]✓ {name}[/green]")

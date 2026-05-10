@@ -21,11 +21,11 @@
 # Protocol: JSON lines over stdin (requests) / stdout (responses).
 # Log messages go to stderr so they appear in the parent's terminal.
 
-import sys
-import signal
-import json
-import base64
 import argparse
+import base64
+import json
+import signal
+import sys
 from pathlib import Path
 
 # Ignore SIGINT — the parent process owns Ctrl+C. We shut down only when
@@ -33,7 +33,7 @@ from pathlib import Path
 signal.signal(signal.SIGINT, signal.SIG_IGN)
 
 
-import numpy as np
+import numpy as np  # noqa: E402 — must follow signal.signal() setup above
 
 
 def _respond(obj: dict):
@@ -63,6 +63,7 @@ def main():
 
     try:
         import os
+
         import onnxruntime as ort
         from kokoro_onnx import Kokoro
 
@@ -108,7 +109,10 @@ def main():
 
             try:
                 samples, sample_rate = kokoro.create(
-                    text, voice=voice, speed=speed, lang=lang,
+                    text,
+                    voice=voice,
+                    speed=speed,
+                    lang=lang,
                 )
                 audio_int16 = np.clip(samples * 32767, -32768, 32767).astype(np.int16)
                 audio_b64 = base64.b64encode(audio_int16.tobytes()).decode("ascii")
