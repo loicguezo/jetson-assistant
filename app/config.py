@@ -36,7 +36,7 @@ class LLMConfig:
 
 @dataclass
 class STTConfig:
-    model: str = "base.en"
+    model: str = "base"
     device: str = "cuda"
     compute_type: str = "int8"
     language: str = "en"

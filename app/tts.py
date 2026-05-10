@@ -364,6 +364,10 @@ class PiperTTS:
         if self._piper_voice is None:
             return {"audio": None, "error": "Not loaded"}
 
+        import unicodedata
+
+        text = unicodedata.normalize("NFC", text)
+
         try:
             from piper.config import SynthesisConfig
 

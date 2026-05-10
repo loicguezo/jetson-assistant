@@ -11,7 +11,7 @@ llm:
   system_prompt: "You are a helpful voice assistant running on an NVIDIA Jetson. Your responses will be spoken aloud via text-to-speech. Answer compactly and with depth: explain essential concepts precisely, without unnecessary embellishments. A response should not take longer than one minute to read aloud at a normal pace (approx. 130 words). Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting. Write numbers and units as spoken words when short."
 
 stt:
-  model: "small.en"                   # tiny.en, base.en, small.en
+  model: "base"                       # tiny/base/small/medium (multilingual) or tiny.en/base.en/small.en (English-only)
   device: "cuda"
   compute_type: "int8"
   language: "en"

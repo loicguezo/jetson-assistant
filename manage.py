@@ -155,7 +155,7 @@ def setup(
     project_dir = Path(__file__).parent
 
     # ── Step 1: Prerequisites ──────────────────────────────────
-    console.print("\n[bold]Step 1/7 — Checking prerequisites[/bold]")
+    console.print("\n[bold]Step 1/8 — Checking prerequisites[/bold]")
     prereqs = check_prerequisites()
     missing_required = []
     missing_optional = []
@@ -190,7 +190,7 @@ def setup(
         raise typer.Exit(1)
 
     # ── Step 2: Build llama.cpp ────────────────────────────────
-    console.print("\n[bold]Step 2/7 — llama.cpp[/bold]")
+    console.print("\n[bold]Step 2/8 — llama.cpp[/bold]")
 
     if skip_llama:
         console.print("  [dim]Skipped (--skip-llama)[/dim]")
@@ -216,7 +216,7 @@ def setup(
             console.print(f"\n  [green]✓ Built:[/green] [dim]{llama_server_path()}[/dim]")
 
     # ── Step 3: Download model ─────────────────────────────────
-    console.print("\n[bold]Step 3/7 — Model[/bold]")
+    console.print("\n[bold]Step 3/8 — Model[/bold]")
     console.print(
         "  [dim]A free HuggingFace account is required to download models.\n"
         "  If not logged in yet: [bold]hf auth login[/bold]  "
@@ -238,7 +238,7 @@ def setup(
             _model_download_dialog()
 
     # ── Step 4: Python venv ────────────────────────────────────
-    console.print("\n[bold]Step 4/7 — Python environment[/bold]")
+    console.print("\n[bold]Step 4/8 — Python environment[/bold]")
 
     if skip_venv:
         console.print("  [dim]Skipped (--skip-venv)[/dim]")
@@ -260,7 +260,7 @@ def setup(
                 )
 
     # ── Step 5: CTranslate2 CUDA ──────────────────────────────
-    console.print("\n[bold]Step 5/7 — CTranslate2 (STT GPU acceleration)[/bold]")
+    console.print("\n[bold]Step 5/8 — CTranslate2 (STT GPU acceleration)[/bold]")
 
     venv_dir = project_dir / "venv"
     if ctranslate2_has_cuda(venv_dir):
@@ -286,7 +286,7 @@ def setup(
             console.print("  [dim]Skipped — STT will run on CPU.[/dim]")
 
     # ── Step 6: TTS voice models ───────────────────────────────
-    console.print("\n[bold]Step 6/7 — TTS voice models[/bold]")
+    console.print("\n[bold]Step 6/8 — TTS voice models[/bold]")
 
     from app.tts import VOICES_DIR, _download_kokoro_models_if_missing
 
@@ -314,7 +314,7 @@ def setup(
             console.print("  [dim]Skipped — will download on first use.[/dim]")
 
     # ── Step 7: Whisper STT model ──────────────────────────────
-    console.print("\n[bold]Step 7/7 — STT model (Whisper)[/bold]")
+    console.print("\n[bold]Step 7/8 — STT model (Whisper)[/bold]")
 
     from app.config import Config
 
@@ -331,6 +331,10 @@ def setup(
                 console.print("  [yellow]⚠ Download failed — will retry on first use[/yellow]")
         else:
             console.print("  [dim]Skipped — will download on first use.[/dim]")
+
+    # ── Step 8: Personal configuration ────────────────────────
+    console.print("\n[bold]Step 8/8 — Personal configuration[/bold]")
+    _run_config_wizard(first_time=True)
 
     # ── Done ───────────────────────────────────────────────────
     console.print()
@@ -455,15 +459,25 @@ def start(
     ),
 ):
     """Start the assistant: pick a model, launch llama-server, start voice or text chat."""
+    from app.config import Config as _Cfg
+
+    text_from_cli = text  # True only if --text was explicitly passed
+
     # ── First-time config wizard ───────────────────────────────
-    if not _LOCAL_CONFIG_PATH.exists():
+    first_run = not _LOCAL_CONFIG_PATH.exists()
+    if first_run:
         _run_config_wizard(first_time=True)
         console.print()
+    else:
+        # Show settings summary + offer to change before starting
+        _print_settings_summary(_Cfg.load())
+        console.print()
+        if confirm_with_countdown("Change settings?", default=False, timeout=5):
+            _run_config_wizard(first_time=False)
+            console.print()
 
-    # Apply config default for mode after wizard may have written it
-    if not text:
-        from app.config import Config as _Cfg
-
+    # Determine mode — CLI flag overrides config
+    if not text_from_cli:
         text = _Cfg.load().app.mode == "text"
 
     title = "Jetson Text Assistant" if text else "Jetson Voice Assistant"
@@ -493,19 +507,21 @@ def start(
             )
             raise typer.Exit(1)
 
-        # Use config default if set and found, otherwise fall back to first model
-        default_idx = next((i for i, m in enumerate(models) if m.name == cfg_model), 0)
-
-        console.print("\n[bold]Available models:[/bold]")
-        for i, m in enumerate(models, 1):
-            size_gb = m.stat().st_size / 1e9
-            console.print(f"  [cyan]{i}[/cyan]  {m.name}  [dim]({size_gb:.1f} GB)[/dim]")
-            console.print(f"      [dim]{m.parent}[/dim]")
-
-        console.print()
-        choices = [str(i) for i in range(1, len(models) + 1)]
-        choice = prompt_with_countdown("Select model", choices, default=str(default_idx + 1))
-        model_path = models[int(choice) - 1]
+        # If a model is configured and exists, use it directly — no prompt needed
+        configured = next((m for m in models if m.name == cfg_model), None)
+        if configured:
+            model_path = configured
+        else:
+            # No model configured (or not found) — ask once
+            console.print("\n[bold]Available models:[/bold]")
+            for i, m in enumerate(models, 1):
+                size_gb = m.stat().st_size / 1e9
+                console.print(f"  [cyan]{i}[/cyan]  {m.name}  [dim]({size_gb:.1f} GB)[/dim]")
+                console.print(f"      [dim]{m.parent}[/dim]")
+            console.print()
+            choices = [str(i) for i in range(1, len(models) + 1)]
+            choice = Prompt.ask("  Select model", choices=choices, default="1")
+            model_path = models[int(choice) - 1]
 
     if not model_path.exists():
         console.print(f"[red]✗ Model not found: {model_path}[/red]")
@@ -1255,6 +1271,29 @@ def write_local_config(path: Path, changes: dict) -> None:
         yaml.dump(existing, f, default_flow_style=False, allow_unicode=True)
 
 
+def _print_settings_summary(cfg) -> None:
+    """Print a one-screen summary of the active configuration."""
+    if cfg.tts.backend == "piper":
+        tts = f"piper · {cfg.tts.piper_model} · speed {cfg.tts.speed}"
+    else:
+        tts = f"kokoro · {cfg.tts.voice} · speed {cfg.tts.speed}"
+
+    llm = cfg.llm.model or "[dim](not set)[/dim]"
+    prompt_short = (
+        cfg.llm.system_prompt[:72] + "…"
+        if len(cfg.llm.system_prompt) > 72
+        else cfg.llm.system_prompt
+    )
+
+    W = 10
+    console.print()
+    console.print(f"  [bold]{'Mode':<{W}}[/bold]{cfg.app.mode}")
+    console.print(f"  [bold]{'Language':<{W}}[/bold]{cfg.stt.language}  ·  STT: {cfg.stt.model}")
+    console.print(f"  [bold]{'TTS':<{W}}[/bold]{tts}")
+    console.print(f"  [bold]{'LLM':<{W}}[/bold]{llm}")
+    console.print(f"  [bold]{'Prompt':<{W}}[/bold][dim]{prompt_short}[/dim]")
+
+
 def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool = False) -> bool:
     """Interactive config wizard. Returns True if something was saved."""
     import yaml
@@ -1270,74 +1309,150 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
     )
     console.print(
         Panel.fit(
-            f"{title}\n"
-            "[dim]Saved to config/settings.local.yaml — never committed to git\n"
-            "Press Enter to keep the current value[/dim]",
+            f"{title}\n[dim]Saved to config/settings.local.yaml — never committed to git[/dim]",
             border_style="cyan",
         )
     )
 
     changes: dict = {}
 
+    def _menu(prompt_label: str, options: list[tuple[str, str]], current: str) -> str:
+        """Numbered menu — returns the key of the selected option."""
+        default_idx = next((i for i, (k, _) in enumerate(options) if k == current), 0)
+        for i, (key, desc) in enumerate(options, 1):
+            marker = ">" if key == current else " "
+            console.print(f"   {marker} [cyan]{i}[/cyan]  {desc}")
+        choice = Prompt.ask(
+            f"  {prompt_label}",
+            choices=[str(i) for i in range(1, len(options) + 1)],
+            default=str(default_idx + 1),
+        )
+        return options[int(choice) - 1][0]
+
     # ── Mode ──────────────────────────────────────────────────────────
     console.print("\n[bold]Mode[/bold]")
-    mode = Prompt.ask(
-        "  Interface",
-        choices=["voice", "text"],
-        default=cfg.app.mode,
+    mode = _menu(
+        "Select",
+        [
+            ("voice", "Voice — microphone + TTS"),
+            ("text", "Text  — keyboard + TTS"),
+        ],
+        cfg.app.mode,
     )
     if mode != cfg.app.mode:
         changes.setdefault("app", {})["mode"] = mode
 
+    # ── Language ──────────────────────────────────────────────────────
+    console.print("\n[bold]Language[/bold]")
+
+    _KNOWN_LANGUAGES: list[tuple[str, str]] = [
+        ("en", "English     (en)"),
+        ("de", "German      (de)"),
+        ("fr", "French      (fr)"),
+        ("es", "Spanish     (es)"),
+        ("it", "Italian     (it)"),
+        ("pt", "Portuguese  (pt)"),
+        ("nl", "Dutch       (nl)"),
+        ("pl", "Polish      (pl)"),
+        ("ru", "Russian     (ru)"),
+        ("zh", "Chinese     (zh)"),
+        ("ja", "Japanese    (ja)"),
+        ("ko", "Korean      (ko)"),
+        ("__other__", "Other — enter code manually"),
+    ]
+    current_lang_key = (
+        cfg.stt.language if any(k == cfg.stt.language for k, _ in _KNOWN_LANGUAGES) else "__other__"
+    )
+    stt_lang_key = _menu("Select", _KNOWN_LANGUAGES, current_lang_key)
+    if stt_lang_key == "__other__":
+        stt_lang = Prompt.ask(
+            "  Language code [dim](BCP-47, e.g. pt, nl, zh)[/dim]",
+            default=cfg.stt.language,
+        )
+    else:
+        stt_lang = stt_lang_key
+
+    if stt_lang != cfg.stt.language:
+        changes.setdefault("stt", {})["language"] = stt_lang
+
+    # Apply localized defaults immediately after language selection
+    lang_defaults = _LANGUAGE_DEFAULTS.get(stt_lang, {})
+    _default_system_prompt = lang_defaults.get("system_prompt", cfg.llm.system_prompt)
+    _default_ready_phrase = lang_defaults.get("ready_phrase", cfg.tts.ready_phrase)
+
+    if lang_defaults:
+        console.print(
+            f"  [dim]→ Localized system prompt and ready phrase pre-filled for '{stt_lang}'[/dim]"
+        )
+        changes.setdefault("tts", {})["ready_phrase"] = _default_ready_phrase
+
     # ── TTS ───────────────────────────────────────────────────────────
     console.print("\n[bold]TTS[/bold]")
-
-    backend = Prompt.ask(
-        "  Backend",
-        choices=["kokoro", "piper"],
-        default=cfg.tts.backend,
+    backend = _menu(
+        "Backend",
+        [
+            ("piper", "Piper  — CPU, multilingual, reliable"),
+            ("kokoro", "Kokoro — GPU, English, higher quality"),
+        ],
+        cfg.tts.backend,
     )
     if backend != cfg.tts.backend:
         changes.setdefault("tts", {})["backend"] = backend
 
     if backend == "piper":
-        _PIPER_PRESETS = [
-            ("en_US-lessac-medium", "Lessac (EN-US) — female"),
-            ("en_US-ryan-high", "Ryan (EN-US) — high quality male"),
-            ("en_GB-alba-medium", "Alba (EN-GB) — female"),
-            ("de_DE-thorsten-high", "Thorsten (DE) — high quality male"),
-            ("de_DE-thorsten-medium", "Thorsten (DE) — medium quality male"),
-            ("de_DE-kerstin-low", "Kerstin (DE) — female"),
+        # All known presets — filtered to the selected language below
+        _ALL_PIPER_PRESETS: list[tuple[str, str]] = [
+            ("en_US-lessac-medium", "Lessac    (EN-US) — female"),
+            ("en_US-ryan-high", "Ryan      (EN-US) — high quality male"),
+            ("en_GB-alba-medium", "Alba      (EN-GB) — female"),
+            ("de_DE-thorsten-high", "Thorsten  (DE) — high quality male"),
+            ("de_DE-thorsten-medium", "Thorsten  (DE) — medium quality male"),
+            ("de_DE-kerstin-low", "Kerstin   (DE) — female"),
+            ("fr_FR-upmc-medium", "UPMC      (FR) — male"),
+            ("es_ES-sharvard-medium", "Sharvard  (ES) — male"),
+            ("it_IT-riccardo-x_low", "Riccardo  (IT) — male"),
+            ("pt_PT-tugão-medium", "Tugão     (PT) — male"),
+            ("nl_NL-mls-medium", "MLS       (NL) — female"),
+            ("pl_PL-mls_6892-low", "MLS 6892  (PL) — male"),
+            ("ru_RU-ruslan-medium", "Ruslan    (RU) — male"),
         ]
-        preset_ids = [p[0] for p in _PIPER_PRESETS]
-        current_preset = cfg.tts.piper_model if cfg.tts.piper_model in preset_ids else None
+        lang_presets = [
+            (mid, label) for mid, label in _ALL_PIPER_PRESETS if mid.startswith(f"{stt_lang}_")
+        ]
         console.print("  Piper voice:")
-        for i, (model_id, label) in enumerate(_PIPER_PRESETS, 1):
-            marker = "[cyan]>[/cyan] " if model_id == current_preset else "  "
-            console.print(f"  {marker}[cyan]{i}[/cyan]  {label}  [dim]{model_id}[/dim]")
-        console.print(
-            f"    [cyan]{len(_PIPER_PRESETS) + 1}[/cyan]  Other — enter model name manually"
-        )
-        preset_choices = [str(i) for i in range(1, len(_PIPER_PRESETS) + 2)]
-        default_choice = str(preset_ids.index(current_preset) + 1) if current_preset else "1"
-        choice = Prompt.ask("  Select", choices=preset_choices, default=default_choice)
-        idx = int(choice) - 1
-        if idx < len(_PIPER_PRESETS):
-            piper_model = _PIPER_PRESETS[idx][0]
-        else:
-            piper_model = Prompt.ask(
-                "  Model name [dim](see rhasspy.github.io/piper-samples)[/dim]",
-                default=cfg.tts.piper_model,
+        if lang_presets:
+            piper_options = lang_presets + [("__other__", "Other — enter model name manually")]
+            current_preset = (
+                cfg.tts.piper_model
+                if any(k == cfg.tts.piper_model for k, _ in piper_options)
+                else "__other__"
             )
+            piper_key = _menu("Select", piper_options, current_preset)
+            if piper_key == "__other__":
+                console.print("  [dim]Browse all voices: rhasspy.github.io/piper-samples[/dim]")
+                piper_model = Prompt.ask("  Model name", default=cfg.tts.piper_model)
+            else:
+                piper_model = piper_key
+        else:
+            console.print(
+                f"  [dim]No presets for '{stt_lang}' — browse: rhasspy.github.io/piper-samples[/dim]"
+            )
+            piper_model = Prompt.ask("  Model name", default=cfg.tts.piper_model)
         if piper_model != cfg.tts.piper_model:
             changes.setdefault("tts", {})["piper_model"] = piper_model
     else:
-        kokoro_voices = ["af_sarah", "af_bella", "am_adam", "bf_emma", "bm_george"]
-        voice = Prompt.ask(
-            "  Kokoro voice",
-            choices=kokoro_voices,
-            default=cfg.tts.voice if cfg.tts.voice in kokoro_voices else "af_sarah",
+        _KOKORO_VOICES: list[tuple[str, str]] = [
+            ("af_sarah", "Sarah  (EN-US female)"),
+            ("af_bella", "Bella  (EN-US female)"),
+            ("am_adam", "Adam   (EN-US male)"),
+            ("bf_emma", "Emma   (EN-GB female)"),
+            ("bm_george", "George (EN-GB male)"),
+        ]
+        current_voice = (
+            cfg.tts.voice if any(k == cfg.tts.voice for k, _ in _KOKORO_VOICES) else "af_sarah"
         )
+        console.print("  Kokoro voice:")
+        voice = _menu("Select", _KOKORO_VOICES, current_voice)
         if voice != cfg.tts.voice:
             changes.setdefault("tts", {})["voice"] = voice
 
@@ -1352,28 +1467,31 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
     # ── STT ───────────────────────────────────────────────────────────
     console.print("\n[bold]STT[/bold]")
 
-    stt_lang = Prompt.ask(
-        "  Language [dim](en, de, fr, es, …)[/dim]",
-        default=cfg.stt.language,
-    )
-    if stt_lang != cfg.stt.language:
-        changes.setdefault("stt", {})["language"] = stt_lang
-
-    # Auto-suggest multilingual model when non-English language is selected
-    stt_model_default = cfg.stt.model
-    suggested = _multilingual_stt_model(stt_lang, stt_model_default)
-    if suggested:
-        console.print(
-            f"  [yellow]⚠ '{stt_model_default}' is English-only — switching default to "
-            f"'{suggested}' (multilingual)[/yellow]"
+    is_english = stt_lang == "en"
+    if is_english:
+        stt_model_options: list[tuple[str, str]] = [
+            ("tiny.en", "tiny.en   — fastest, English-only"),
+            ("base.en", "base.en   — fast, English-only  [dim](recommended)[/dim]"),
+            ("small.en", "small.en  — better quality, English-only"),
+            ("medium.en", "medium.en — best quality, slowest"),
+        ]
+        stt_model_default = (
+            cfg.stt.model if any(k == cfg.stt.model for k, _ in stt_model_options) else "base.en"
         )
-        stt_model_default = suggested
+    else:
+        stt_model_options = [
+            ("tiny", "tiny   — fastest, lower quality"),
+            ("base", "base   — good balance  [dim](recommended)[/dim]"),
+            ("small", "small  — better quality, slower"),
+            ("medium", "medium — best quality, slowest"),
+        ]
+        suggested = _multilingual_stt_model(stt_lang, cfg.stt.model)
+        stt_model_default = suggested or cfg.stt.model
+        if not any(k == stt_model_default for k, _ in stt_model_options):
+            stt_model_default = "base"
 
-    stt_model = Prompt.ask(
-        "  Whisper model [dim](small.en = English only, small = multilingual)[/dim]",
-        choices=["tiny.en", "tiny", "base.en", "base", "small.en", "small", "medium.en", "medium"],
-        default=stt_model_default,
-    )
+    console.print("  Whisper model:")
+    stt_model = _menu("Select", stt_model_options, stt_model_default)
     if stt_model != cfg.stt.model:
         changes.setdefault("stt", {})["model"] = stt_model
 
@@ -1384,53 +1502,41 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
     if gguf_models:
         model_names = [m.name for m in gguf_models]
         current_model = cfg.llm.model if cfg.llm.model in model_names else model_names[0]
-        llm_model = Prompt.ask(
-            "  Model",
-            choices=model_names,
-            default=current_model,
-        )
+        console.print("  Model:")
+        llm_model = _menu("Select", [(n, n) for n in model_names], current_model)
         if llm_model != cfg.llm.model:
             changes.setdefault("llm", {})["model"] = llm_model
     else:
         console.print("  [dim]No .gguf models found in ~/models — skipping[/dim]")
 
-    # Pre-fill localized defaults when a known non-English language is selected
-    lang_defaults = _LANGUAGE_DEFAULTS.get(stt_lang, {})
-    _default_system_prompt = lang_defaults.get("system_prompt", cfg.llm.system_prompt)
-    _default_ready_phrase = lang_defaults.get("ready_phrase", cfg.tts.ready_phrase)
-
-    if lang_defaults and stt_lang != "en":
+    # System prompt — show truncated preview, avoid pasting 400-char string into prompt
+    console.print()
+    short_prompt = (
+        _default_system_prompt[:80] + "…"
+        if len(_default_system_prompt) > 80
+        else _default_system_prompt
+    )
+    if lang_defaults:
         console.print(
-            f"  [dim]Localized defaults available for '{stt_lang}' — press Enter to use them[/dim]"
+            f"  [bold]System prompt[/bold] [dim](localized default for '{stt_lang}'):[/dim]"
         )
-
-    system_prompt = Prompt.ask("  System prompt", default=_default_system_prompt)
+        console.print(f"  [dim]{short_prompt}[/dim]")
+        if Confirm.ask("  Use localized system prompt?", default=True):
+            system_prompt = _default_system_prompt
+        else:
+            system_prompt = Prompt.ask("  Custom system prompt", default=_default_system_prompt)
+    else:
+        console.print("  [bold]System prompt[/bold] [dim](current):[/dim]")
+        console.print(f"  [dim]{short_prompt}[/dim]")
+        if Confirm.ask("  Keep current system prompt?", default=True):
+            system_prompt = cfg.llm.system_prompt
+        else:
+            system_prompt = Prompt.ask("  New system prompt", default=cfg.llm.system_prompt)
     # Always persist so settings.yaml changes don't silently override the user's choice
     changes.setdefault("llm", {})["system_prompt"] = system_prompt
 
-    ready_phrase = Prompt.ask(
-        "  Ready phrase [dim](spoken on startup)[/dim]", default=_default_ready_phrase
-    )
-    changes.setdefault("tts", {})["ready_phrase"] = ready_phrase
-
-    max_tokens_str = Prompt.ask("  Max tokens", default=str(cfg.llm.max_tokens))
-    try:
-        max_tokens = int(max_tokens_str)
-        if max_tokens != cfg.llm.max_tokens:
-            changes.setdefault("llm", {})["max_tokens"] = max_tokens
-    except ValueError:
-        console.print("  [yellow]Invalid value — keeping current[/yellow]")
-
     # ── Preview + save ────────────────────────────────────────────────
     console.print()
-    if not changes:
-        console.print("[dim]No changes — nothing to save.[/dim]")
-        # Still create a marker file so we don't prompt again
-        if first_time:
-            local_path.parent.mkdir(parents=True, exist_ok=True)
-            local_path.write_text(_LOCAL_CONFIG_HEADER)
-        return False
-
     existing: dict = {}
     if local_path.exists():
         try:
@@ -1460,6 +1566,10 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
         return True
 
     console.print("[yellow]Cancelled — nothing saved.[/yellow]")
+    # Still create marker file on first run so we don't prompt again
+    if first_time:
+        local_path.parent.mkdir(parents=True, exist_ok=True)
+        local_path.write_text(_LOCAL_CONFIG_HEADER)
     return False
 
 

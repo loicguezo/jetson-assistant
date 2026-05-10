@@ -58,6 +58,10 @@ in `~/models/`. The setup wizard handles both.
 - Avoid interactive commands (`bluetoothctl connect`, `git rebase -i`). Use non-interactive alternatives or pass the MAC/args directly.
 - Scope `find` searches to specific subdirectories, not broad paths like `/home/jetson` — on Jetson the `venv/` tree alone has thousands of files.
 
+## Task management
+
+For complex tasks (more than ~3 steps, spanning multiple files, or requiring research before implementation), create a task list at the start so progress is visible and nothing gets dropped. Mark each task done as it completes.
+
 ## Development
 
 - No SPDX headers on new files. Headers are kept only on files derived from the
