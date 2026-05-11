@@ -31,6 +31,56 @@ def kill_pulseaudio() -> bool:
     return subprocess.run(["pgrep", "-x", "pulseaudio"], capture_output=True).returncode != 0
 
 
+def unmute_alsa_capture(card: int) -> None:
+    """Set capture volume to maximum and enable the capture switch for a given card.
+
+    USB mics default to 0 capture volume after boot on some systems (e.g. Jetson).
+    This is best-effort: silently ignored if the card has no such controls.
+    """
+    import re
+
+    try:
+        r = subprocess.run(
+            ["amixer", "-c", str(card), "contents"],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        # Parse multi-line blocks: each control spans several lines.
+        # We collect lines per control and extract numid + max from them.
+        lines = r.stdout.splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            numid_m = re.search(r"numid=(\d+)", line)
+            if numid_m and ("Capture Volume" in line or "Capture Switch" in line):
+                numid = numid_m.group(1)
+                # Collect the next few lines of this block to find max= or type
+                block = line
+                for j in range(i + 1, min(i + 5, len(lines))):
+                    if lines[j].startswith("numid="):
+                        break
+                    block += "\n" + lines[j]
+
+                if "Capture Switch" in line:
+                    subprocess.run(
+                        ["amixer", "-c", str(card), "cset", f"numid={numid}", "on"],
+                        capture_output=True,
+                        timeout=5,
+                    )
+                elif "Capture Volume" in line:
+                    max_m = re.search(r"max=(\d+)", block)
+                    if max_m:
+                        subprocess.run(
+                            ["amixer", "-c", str(card), "cset", f"numid={numid}", max_m.group(1)],
+                            capture_output=True,
+                            timeout=5,
+                        )
+            i += 1
+    except Exception:
+        pass
+
+
 def find_alsa_device(
     name_hint: str = "USB Audio",
     direction: str = "input",

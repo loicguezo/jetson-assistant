@@ -22,6 +22,7 @@ Usage:
   python3 run_voice_chat.py
 """
 
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -31,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 from rich.console import Console
 from rich.panel import Panel
 
-from app.audio import find_alsa_device
+from app.audio import find_alsa_device, unmute_alsa_capture
 from app.config import Config
 from app.history import clear_history, load_history, save_history
 from app.monitor import ram_used_gb
@@ -74,6 +75,18 @@ def main():
         return
     card, dev, mic_name = result
     hw = f"hw:{card},{dev}"
+    unmute_alsa_capture(card)
+    # Boost PA capture volume to 150% (software gain) so quiet USB mics
+    # deliver enough signal. Best-effort: ignored if pactl is unavailable.
+    from app.pipeline import find_pa_source as _find_pa_source
+
+    _pa_src = _find_pa_source(mic_hint)
+    if _pa_src:
+        subprocess.run(
+            ["pactl", "set-source-volume", _pa_src, "150%"],
+            capture_output=True,
+            timeout=5,
+        )
     console.print(f"  Mic: {hw} ({mic_name})")
 
     # ── Load models ──────────────────────────────────────────────
@@ -197,6 +210,9 @@ def main():
                 history.append({"role": "assistant", "content": full_resp})
                 save_history(history[-max_history:])
 
+            # Brief pause so room echo from TTS doesn't trigger the next VAD cycle.
+            # The _reader thread keeps running but discards audio while listening=False.
+            time.sleep(0.4)
             mic.resume()
 
     except KeyboardInterrupt:

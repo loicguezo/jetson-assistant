@@ -105,7 +105,12 @@ def _pa_match(needle: str, haystack: str) -> bool:
 
 
 def find_pa_source(name_hint: str) -> str | None:
-    """Find a PulseAudio input source matching name_hint."""
+    """Find a PulseAudio input source matching name_hint.
+
+    Falls back to the first non-monitor source when the hint doesn't match —
+    PA source names (e.g. alsa_input.usb-C-Media...analog-mono) often differ
+    from ALSA device names (e.g. "USB Audio").
+    """
     try:
         r = subprocess.run(
             ["pactl", "list", "short", "sources"],
@@ -113,14 +118,23 @@ def find_pa_source(name_hint: str) -> str | None:
             text=True,
             timeout=5,
         )
-        for line in r.stdout.splitlines():
-            parts = line.split("\t")
-            if (
-                len(parts) >= 2
-                and _pa_match(name_hint, parts[1])
-                and "monitor" not in parts[1].lower()
-            ):
-                return parts[1]
+        lines = r.stdout.splitlines()
+        candidates = [
+            line.split("\t")[1]
+            for line in lines
+            if len(line.split("\t")) >= 2
+            and "monitor" not in line.split("\t")[1].lower()
+            and "bluez" not in line.split("\t")[1].lower()
+        ]
+        # Prefer a source whose name contains any word from the hint.
+        hint_words = [w for w in name_hint.lower().replace("-", "_").split() if len(w) > 2]
+        for src in candidates:
+            if any(w in src.lower().replace("-", "_") for w in hint_words):
+                return src
+        # Fallback: first non-monitor, non-BT source (e.g. USB mic with a
+        # PA name that bears no resemblance to the ALSA hint).
+        if candidates:
+            return candidates[0]
     except Exception:
         pass
     return None
@@ -360,6 +374,7 @@ class MicRecorder:
                 "--format=s16le",
                 f"--rate={SAMPLE_RATE}",
                 f"--channels={CHANNELS}",
+                "--latency-msec=30",
                 "--raw",
             ]
         else:
@@ -423,8 +438,12 @@ class MicRecorder:
             r = chunk_rms(b"".join(test_chunks))
             if r > 0.003:
                 self.console.print("  Mic: [green]✓ live[/green]")
+            elif r > 0.0003:
+                self.console.print(f"  Mic: [yellow]⚠ quiet (rms={r:.4f}) — speak to test[/yellow]")
             else:
-                self.console.print("  Mic: [red]✗ silent — unmute![/red]")
+                self.console.print(
+                    f"  Mic: [red]✗ silent (rms={r:.4f}) — check volume/connection[/red]"
+                )
         else:
             self.console.print(
                 f"  [red]Mic: no audio data (arecord running: {self._proc.poll() is None})[/red]\n"

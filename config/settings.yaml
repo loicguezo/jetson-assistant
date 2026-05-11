@@ -40,4 +40,4 @@ vad:
   max_speech_secs: 15                 # max single utterance length
   chunk_ms: 32                        # audio chunk size (32ms required for Silero, 30ms for energy-only)
   min_utterance_secs: 0.8             # reject utterances shorter than this (filters coughs/bumps)
-  min_utterance_rms: 0.025            # reject utterances quieter than this (filters background chatter)
+  min_utterance_rms: 0.003            # reject utterances quieter than this (filters background chatter)
