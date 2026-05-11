@@ -4,11 +4,11 @@ llm:
   model: ""                           # empty = auto-detect from server
   base_url: "http://localhost:8080"
   backend: "openai"                   # "openai" = llama.cpp OpenAI-compatible API
-  max_tokens: 512
+  max_tokens: 200
   temperature: 0.7
   timeout: 120.0
   memory_turns: 20            # past turns sent as context (benchmarked: 20 turns @ ~100 tok/turn fits ctx=8192 with headroom)
-  system_prompt: "You are a helpful voice assistant running on an NVIDIA Jetson. Your responses will be spoken aloud via text-to-speech. Answer compactly and with depth: explain essential concepts precisely, without unnecessary embellishments. A response should not take longer than one minute to read aloud at a normal pace (approx. 130 words). Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting. Write numbers and units as spoken words when short."
+  system_prompt: "You are a helpful voice assistant running on an NVIDIA Jetson. Your responses will be spoken aloud via text-to-speech. Answer briefly and precisely: 1–2 sentences for simple questions, 3–4 sentences maximum for complex topics. Do not ask follow-up questions when the request is clear. Never use emojis, asterisks, bullet points, markdown, code blocks, or special formatting. Write numbers and units as spoken words when short."
 
 stt:
   model: "base"                       # tiny/base/small/medium (multilingual) or tiny.en/base.en/small.en (English-only)
