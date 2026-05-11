@@ -1563,6 +1563,19 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
         console.print(f"  [green]✓ Saved to {local_path}[/green]")
         if not first_time:
             console.print("  Takes effect on next [cyan]./jetson-assistant start[/cyan]")
+        # Offer to pre-download the Whisper model if it's not cached yet —
+        # avoids a silent 100+ second hang on first voice-chat start.
+        if not whisper_model_cached(stt_model):
+            console.print(
+                f"\n  [yellow]Whisper '{stt_model}' not yet downloaded[/yellow]"
+                f" [dim](Systran/faster-whisper-{stt_model})[/dim]"
+            )
+            if Confirm.ask("  Download now? (recommended — avoids delay at startup)", default=True):
+                console.print("  Downloading...")
+                if download_whisper_model(stt_model):
+                    console.print(f"  [green]✓ faster-whisper/{stt_model} ready[/green]")
+                else:
+                    console.print("  [yellow]⚠ Download failed — will retry on first use[/yellow]")
         return True
 
     console.print("[yellow]Cancelled — nothing saved.[/yellow]")
