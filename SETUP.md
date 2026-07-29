@@ -58,6 +58,14 @@ sudo apt-get install -y \
 
 llama.cpp is compiled directly on the Jetson. This avoids container overhead and keeps memory usage minimal on the shared 8 GB unified memory.
 
+### Install UV
+
+if you have not already installed on your system.
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
 ### Build
 
 ```bash
@@ -99,8 +107,8 @@ hf download unsloth/gemma-4-E4B-it-GGUF \
 
 **Recommended model for Orin Nano 8GB:**
 
-| Model | File | Size |
-|-------|------|------|
+| Model                 | File                         | Size    |
+| --------------------- | ---------------------------- | ------- |
 | Gemma 4 E4B (unsloth) | `gemma-4-E4B-it-Q4_K_M.gguf` | ~4.6 GB |
 
 Any `.gguf` file placed in `~/models/` is detected automatically by `./jetson-assistant start`.
@@ -109,7 +117,7 @@ Any `.gguf` file placed in `~/models/` is detected automatically by `./jetson-as
 
 ```bash
 ~/llama.cpp/build/bin/llama-server \
-  -m ~/models/gemma-3-4b-it-Q4_K_M.gguf \
+  -m ~/models/gemma-4-E4B-it-Q4_K_M.gguf \
   --port 8080 --host 127.0.0.1 \
   -ngl 99 \
   -c 4096
@@ -132,7 +140,7 @@ After=network.target
 
 [Service]
 ExecStart=/home/jetson/llama.cpp/build/bin/llama-server \
-  -m /home/jetson/models/gemma-3-4b-it-Q4_K_M.gguf \
+  -m /home/jetson/models/gemma-4-E4B-it-Q4_K_M.gguf \
   --port 8080 --host 127.0.0.1 -ngl 99 -c 4096
 Restart=on-failure
 User=jetson
@@ -155,32 +163,16 @@ sudo systemctl start llama-server
 ```bash
 git clone https://github.com/segutwein/jetson-assistant
 cd jetson-assistant
-python3.10 -m venv venv
-source venv/bin/activate
-```
-
-### Install Python Packages
-
-```bash
-pip install --upgrade pip wheel
-pip install -r requirements.txt
-```
-
-### Install ONNX Runtime GPU (Jetson-Specific)
-
-The default `onnxruntime` from pip is CPU-only. For GPU inference (Kokoro TTS, Silero VAD):
-
-```bash
-pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+uv sync --extra gpu # for GPU inference
 ```
 
 > If `CUDAExecutionProvider` isn't listed after install, uninstall the CPU version first:
-> `pip uninstall onnxruntime && pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
+> `uv pip uninstall onnxruntime && uv pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126`
 
 ### Pin NumPy (Compatibility Fix)
 
 ```bash
-pip install "numpy==1.26.4"
+uv pip install "numpy==1.26.4"
 ```
 
 ### Build CTranslate2 with CUDA (GPU-Accelerated STT)
@@ -188,7 +180,7 @@ pip install "numpy==1.26.4"
 The pip `ctranslate2` package is CPU-only. Build from source for GPU-accelerated Whisper:
 
 ```bash
-pip install pybind11
+uv pip install pybind11
 
 cd ~
 git clone --depth 1 https://github.com/OpenNMT/CTranslate2.git
@@ -206,19 +198,19 @@ cmake --install . --prefix ~/.local
 
 export LD_LIBRARY_PATH=~/.local/lib:$LD_LIBRARY_PATH
 cd ../python
-pip install .
+uv pip install .
 ```
 
 Persist the library path:
 
 ```bash
-echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/jetson-assistant/venv/bin/activate
+echo 'export LD_LIBRARY_PATH=$HOME/.local/lib:$LD_LIBRARY_PATH' >> ~/jetson-assistant/.venv/bin/activate
 ```
 
 ### Verify Installation
 
 ```bash
-source ~/jetson-assistant/venv/bin/activate
+source ~/jetson-assistant/.venv/bin/activate
 python3 -c "
 import ctranslate2; print('CTranslate2 CUDA devices:', ctranslate2.get_cuda_device_count())
 import onnxruntime; print('ONNX providers:', onnxruntime.get_available_providers())
@@ -228,6 +220,7 @@ import kokoro_onnx; print('kokoro-onnx: OK')
 ```
 
 Expected output:
+
 ```
 CTranslate2 CUDA devices: 1
 ONNX providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
@@ -260,23 +253,26 @@ Piper TTS runs as a self-contained binary. It downloads automatically on first u
 ```bash
 # The assistant downloads piper and voice models automatically on first run with --tts-backend piper.
 # To trigger download explicitly:
-source venv/bin/activate
+source .venv/bin/activate
 python3 -c "from app.tts import download_piper_if_missing; download_piper_if_missing('de_DE-thorsten-medium')"
 ```
 
 To use Piper, set in `config/settings.yaml`:
+
 ```yaml
 tts:
-  backend: piper
-  piper_model: de_DE-thorsten-medium   # or: de_DE-kerstin-low, en_US-lessac-medium, en_US-ryan-high
+    backend: piper
+    piper_model: de_DE-thorsten-medium # or: de_DE-kerstin-low, en_US-lessac-medium, en_US-ryan-high
 ```
 
 Or via CLI (per session, without changing settings.yaml):
+
 ```bash
 ./jetson-assistant start --tts-backend piper --piper-model de_DE-thorsten-medium
 ```
 
 To compare TTS backends with the same benchmark input:
+
 ```bash
 ./jetson-assistant benchmark --tts-backend kokoro
 ./jetson-assistant benchmark --tts-backend piper --piper-model de_DE-thorsten-medium
@@ -293,6 +289,7 @@ arecord -l
 ```
 
 Example output:
+
 ```
 card 2: Device [USB Audio Device], device 0: USB Audio [USB Audio]
 ```
@@ -301,7 +298,7 @@ Set the device hint in `config/settings.yaml`:
 
 ```yaml
 audio:
-  input_device: "USB Audio"   # substring match against arecord -l output
+    input_device: "USB Audio" # substring match against arecord -l output
 ```
 
 Leave `input_device: null` to auto-detect the first available input.
@@ -314,9 +311,10 @@ Leave `input_device: null` to auto-detect the first available input.
 Make sure CUDA is on the PATH: `export PATH=/usr/local/cuda/bin:$PATH`. Check `nvcc --version` returns 12.x.
 
 **`CUDAExecutionProvider` not available (ONNX):**
+
 ```bash
-pip uninstall onnxruntime
-pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
+uv pip uninstall onnxruntime
+uv pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/cu126
 ```
 
 **CTranslate2 not finding CUDA at runtime:**
@@ -326,6 +324,7 @@ pip install onnxruntime-gpu --extra-index-url https://pypi.jetson-ai-lab.io/jp6/
 Check it's running: `curl http://127.0.0.1:8080/v1/models`. If not, check for OOM: `dmesg | grep -i kill`.
 
 **Out of memory (OOM):**
+
 - Use a more aggressively quantized model (e.g. Q4_K_M instead of Q8_0)
 - Make sure NVMe swap is active: `swapon --show`
 - Reduce context size: `-c 2048`
