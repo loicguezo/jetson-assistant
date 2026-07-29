@@ -1,18 +1,107 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jetson-assistant-standalone"
+version = "0.1.0"
+description = "A fully local, zero-cloud multimodal AI assistant running natively on NVIDIA Jetson Orin Nano with Jetpack 6.x, CUDA 12.x, V4L2 camera capture, and PCA9685 servo drive."
+readme = "README.md"
+requires-python = ">=3.10, <3.11"
+license = "Apache-2.0"
+authors = [
+    { name = "loicguezo", email = "contact@guezo.net" },
+    { name = "segutwein" },
+    { name = "Aditya Sahu" }
+]
+
+dependencies = [
+    "pyyaml>=6.0",
+    "rich>=13.0",
+    "typer>=0.9.0",
+    "psutil>=5.9.0",
+    "sounddevice>=0.4.6",
+    "silero-vad>=5.1",
+    "httpx>=0.24.0",
+    "faster-whisper>=1.0.0",
+    "kokoro-onnx>=0.4.0",
+    "pathvalidate>=3.0",
+    "opencv-python-headless>=4.8.0",
+    "adafruit-circuitpython-servokit>=1.3.15",
+    "pyserial>=3.5",
+    "piper-tts",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "ruff>=0.4.0",
+    "pre-commit>=3.0",
+]
+gpu = [
+#     "numpy==1.26.4",
+    "onnxruntime-gpu==1.23.0",
+    "pybind11"
+]
+
+[project.scripts]
+jetson-assistant = "run_vision_chat:main"
+
+# ==========================================
+# RUFF CONFIGURATION (Linter & Formatter)
+# ==========================================
 [tool.ruff]
 line-length = 100
 target-version = "py310"
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
 
 [tool.ruff.lint]
 select = [
     "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
     "F",   # pyflakes (unused imports, undefined names)
     "I",   # isort (import ordering)
     "UP",  # pyupgrade (modern Python syntax)
     "B",   # flake8-bugbear (common bugs)
 ]
+
 ignore = [
-    "E501",  # line too long — handled by formatter
+    "E501", # line too long — handled by formatter
 ]
 
 [tool.ruff.format]
 quote-style = "double"
+
+# ==========================================
+# UV CONFIGURATION & PACKAGE CONFLICTS
+# ==========================================
+[uv.tool.venv]
+relocatable = true
+system-site-packages=true
+
+[tool.uv]
+preview-features = ["package-conflicts"]
+conflicts = [
+  [
+    { extra = "cpu" },
+    { extra = "gpu" },
+  ],
+]
+
+[tool.uv.sources]
+onnxruntime-gpu = { index = "jetson-ai-lab" }
+
+[[tool.uv.index]]
+name = "jetson-ai-lab"
+url = "https://pypi.jetson-ai-lab.io/jp6/cu126"
+explicit = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*", "config*"]
