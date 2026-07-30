@@ -80,6 +80,16 @@ class VADConfig:
     silero_threshold: float = 0.5
 
 
+@dataclass
+class VisionConfig:
+    camera_device: str | int = 0
+    width: int = 640
+    height: int = 480
+    framerate: int = 3
+    jpeg_quality: int = 80
+    camera_type: str = "CAP_V4L2"
+
+
 _SECTIONS = [
     ("app", "app", AppConfig),
     ("llm", "llm", LLMConfig),
@@ -87,6 +97,7 @@ _SECTIONS = [
     ("tts", "tts", TTSConfig),
     ("audio", "audio", AudioConfig),
     ("vad", "vad", VADConfig),
+    ("vision", "vision", VisionConfig),
 ]
 
 
@@ -103,6 +114,7 @@ class Config:
     tts: TTSConfig = field(default_factory=TTSConfig)
     audio: AudioConfig = field(default_factory=AudioConfig)
     vad: VADConfig = field(default_factory=VADConfig)
+    vision: VisionConfig = field(default_factory=VisionConfig)
 
     @classmethod
     def load(cls, config_path: str | None = None) -> "Config":
