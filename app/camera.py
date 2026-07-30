@@ -123,7 +123,6 @@ class Camera:
                     continue
                 ret, frame = self._cap.read()
                 frame = cv2.resize(frame, (self.width, self.height), interpolation=cv2.INTER_AREA)
-                cv2.imshow("w1", frame)
 
             now = time.monotonic()
 
