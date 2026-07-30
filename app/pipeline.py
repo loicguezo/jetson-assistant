@@ -30,6 +30,7 @@ import numpy as np
 from rich.console import Console
 
 from app.audio import kill_pulseaudio
+from app.camera import Camera
 from app.config import VADConfig
 
 # Suppress noisy ALSA error messages (underrun warnings etc.)
@@ -679,6 +680,95 @@ def stream_and_speak(
             tts_obj,
             prompt,
             system_prompt,
+            pa_sink=pa_sink,
+            few_shot=few_shot,
+            first_chunk_words=first_chunk_words,
+            max_chunk_words=max_chunk_words,
+            _retry=False,
+        )
+
+    return full_resp, dt_llm, ttft
+
+
+def stream_capture_and_speak(
+    llm,
+    tts_obj,
+    prompt: str,
+    system_prompt: str,
+    cam: Camera,
+    pa_sink: str | None = None,
+    few_shot: list[dict] | None = None,
+    first_chunk_words: int = 3,
+    max_chunk_words: int = 8,
+    _retry: bool = True,
+) -> tuple[str, float, float | None]:
+    """Stream LLM response while chunking text to TTS for real-time playback.
+
+    Returns (full_response, elapsed_seconds, time_to_first_token).
+    Retries once when the server returns an empty response (stale KV-cache).
+    """
+    tts_q = None
+    tts_thread = None
+    captureb64 = cam.read_live()
+    if tts_obj:
+        tts_q = queue.Queue()
+        tts_thread = threading.Thread(
+            target=tts_player,
+            args=(tts_obj, tts_q, pa_sink),
+            daemon=True,
+        )
+        tts_thread.start()
+
+    full_resp = ""
+    tts_buf = ""
+    first_tts_sent = False
+    t_llm = time.perf_counter()
+    ttft = None
+
+    for chunk_data in llm.generate_stream(
+        prompt=prompt,
+        system_prompt=system_prompt,
+        image_b64=captureb64,
+        few_shot=few_shot,
+    ):
+        content, meta = chunk_data if isinstance(chunk_data, tuple) else (chunk_data, {})
+        if content:
+            if ttft is None:
+                ttft = time.perf_counter() - t_llm
+            sys.stdout.write(content)
+            sys.stdout.flush()
+            full_resp += content
+
+            if tts_q is not None:
+                tts_buf += content
+                words = len(tts_buf.split())
+                limit = first_chunk_words if not first_tts_sent else max_chunk_words
+                hit_break = any(c in content for c in TTS_BREAKS) and words >= 2
+                if hit_break or words >= limit:
+                    tts_q.put(tts_buf.strip())
+                    tts_buf = ""
+                    first_tts_sent = True
+
+    dt_llm = time.perf_counter() - t_llm
+
+    if tts_q is not None:
+        if tts_buf.strip():
+            tts_q.put(tts_buf.strip())
+        tts_q.put(None)
+        tts_thread.join(timeout=60)
+        if tts_thread.is_alive():
+            sys.stderr.write("  [warn] TTS thread did not finish in 60s\n")
+
+    # llama-server occasionally returns [DONE] immediately when its KV-cache
+    # is in a bad state after rapid successive requests. Retry once to recover.
+    if ttft is None and _retry:
+        time.sleep(0.3)
+        return stream_capture_and_speak(
+            llm,
+            tts_obj,
+            prompt,
+            system_prompt,
+            cam,
             pa_sink=pa_sink,
             few_shot=few_shot,
             first_chunk_words=first_chunk_words,

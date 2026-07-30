@@ -73,6 +73,29 @@ class LLM:
             print(f"LLM connection error: {e}")
             return False
 
+    def _messages_multimodal(
+        self,
+        prompt: str,
+        image_b64: list[str],
+        system_prompt: str | None = None,
+        few_shot: list[dict] | None = None,
+    ) -> list:
+        msgs: list = []
+        sp = system_prompt or self.system_prompt
+        if sp:
+            msgs.append({"role": "system", "content": sp})
+        if few_shot:
+            msgs.extend(few_shot)
+            content: list[dict] = [{"type": "text", "text": prompt}]
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                }
+            )
+            msgs.append({"role": "user", "content": content})
+            return msgs
+
     def _messages(
         self,
         prompt: str,
@@ -94,16 +117,19 @@ class LLM:
         system_prompt: str | None = None,
         max_tokens: int | None = None,
         temperature: float | None = None,
+        image_b64: list[str] | None = None,
         few_shot: list[dict] | None = None,
     ) -> Iterator[tuple]:
-        """Yields (content, metadata) tuples."""
+        """Yields (content, metadata) tuples. Pass images_b64 for multimodal VLM requests."""
         if not self._loaded:
             yield ("", {})
             return
         mt = max_tokens or self.max_tokens
         t = temperature if temperature is not None else self.temperature
-        msgs = self._messages(prompt, system_prompt, few_shot)
-
+        if image_b64:
+            msgs = self._messages_multimodal(prompt, image_b64, system_prompt, few_shot)
+        else:
+            msgs = self._messages(prompt, system_prompt, few_shot)
         if self.backend == "openai":
             yield from self._stream_openai(msgs, mt, t)
         else:
@@ -124,7 +150,7 @@ class LLM:
                     },
                 ) as r:
                     if r.status_code != 200:
-                        err = r.read(512).decode(errors="replace")
+                        err = r.read().decode(errors="replace")[:512]
                         print(f"\n  [LLM error {r.status_code}] {err}")
                         yield ("", {})
                         return
@@ -138,15 +164,15 @@ class LLM:
                         try:
                             data = json.loads(line[5:])
                             usage = data.get("usage")
-                            if usage:
-                                yield (
-                                    "",
-                                    {
-                                        "done": True,
-                                        "eval_count": usage.get("completion_tokens", 0),
-                                    },
-                                )
-                                return
+                            # if usage:
+                            #     yield (
+                            #         "",
+                            #         {
+                            #             "done": True,
+                            #             "eval_count": usage.get("completion_tokens", 0),
+                            #         },
+                            #     )
+                            #     return
                             content = ((data.get("choices") or [{}])[0].get("delta") or {}).get(
                                 "content", ""
                             )

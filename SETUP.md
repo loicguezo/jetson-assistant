@@ -101,7 +101,8 @@ Download the recommended model:
 
 ```bash
 hf download unsloth/gemma-4-E4B-it-GGUF \
-  --include "gemma-4-E4B-it-Q4_K_M.gguf" \
+  --include "gemma-4-E2B-it-Q4_K_M.gguf" \
+  --include "mmproj-F16.gguf" \
   --local-dir ~/models
 ```
 
@@ -117,7 +118,8 @@ Any `.gguf` file placed in `~/models/` is detected automatically by `./jetson-as
 
 ```bash
 ~/llama.cpp/build/bin/llama-server \
-  -m ~/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --model ~/models/gemma-4-E2B-it-Q4_K_M.gguf \
+  --mmproj ~/models/mmproj-F16.gguf \
   --port 8080 --host 127.0.0.1 \
   -ngl 99 \
   -c 4096
@@ -140,7 +142,8 @@ After=network.target
 
 [Service]
 ExecStart=/home/jetson/llama.cpp/build/bin/llama-server \
-  -m /home/jetson/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --model $HOME/models/gemma-4-E4B-it-Q4_K_M.gguf \
+  --mmproj $HOME/models/
   --port 8080 --host 127.0.0.1 -ngl 99 -c 4096
 Restart=on-failure
 User=jetson
@@ -216,6 +219,7 @@ import ctranslate2; print('CTranslate2 CUDA devices:', ctranslate2.get_cuda_devi
 import onnxruntime; print('ONNX providers:', onnxruntime.get_available_providers())
 import faster_whisper; print('faster-whisper: OK')
 import kokoro_onnx; print('kokoro-onnx: OK')
+import cv2; print(cv2.getBuildInformation())
 "
 ```
 
@@ -226,6 +230,7 @@ CTranslate2 CUDA devices: 1
 ONNX providers: ['CUDAExecutionProvider', 'CPUExecutionProvider']
 faster-whisper: OK
 kokoro-onnx: OK
+cv2 too long info stats (GSTREAMER must be on YES if you wish to use a CSI interface camera)
 ```
 
 ---

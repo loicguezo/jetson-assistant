@@ -656,6 +656,7 @@ def stop():
     for script, label in [
         ("run_voice_chat.py", "voice-chat"),
         ("run_text_chat.py", "text-chat"),
+        ("run_voice_vision_chat.py", "text-vision-chat"),
     ]:
         result = subprocess.run(["pkill", "-f", script], capture_output=True)
         if result.returncode == 0:
@@ -1366,6 +1367,7 @@ def _run_config_wizard(local_path: Path = _LOCAL_CONFIG_PATH, first_time: bool =
         [
             ("voice", "Voice — microphone + TTS"),
             ("text", "Text  — keyboard + TTS"),
+            ("vision-voice", "Vision & Voice —  microphone + TTS"),
         ],
         cfg.app.mode,
     )
