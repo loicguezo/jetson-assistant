@@ -17,7 +17,9 @@
 """
 Voice Chat — speak anytime, dynamic recording.
 Mic -> Silero/energy VAD -> STT -> LLM stream -> TTS stream -> Speaker
-Vision                          -^
+Vision (VLM)               -^
+Vision (DETECTION) -> move (servo motor) -> center camera
+
 Usage:
   python3 run_voice_vision_chat.py
 """
@@ -29,6 +31,8 @@ from pathlib import Path
 
 import cv2
 
+from app import face_tracker
+
 sys.path.insert(0, str(Path(__file__).parent))
 
 from rich.console import Console
@@ -37,6 +41,8 @@ from rich.panel import Panel
 from app.audio import find_alsa_device, unmute_alsa_capture
 from app.camera import Camera
 from app.config import Config
+from app.face_detector import FaceDetector
+from app.face_tracker import FaceTracker
 from app.history import clear_history, load_history, save_history
 from app.monitor import ram_used_gb
 from app.pipeline import (
@@ -108,6 +114,21 @@ def main():
             f"{config.vision.framerate} fps compressed ring buffer)"
         )
 
+    # ── Face detection setup ─────────────────────────────────────
+    face_detector = FaceDetector()
+
+    face_tracker = FaceTracker(
+        cam,
+        face_detector,
+        head_yaw_max_deg=90,
+        fps=15,
+        dead_zone=0.05,
+        lock_zone=0.25,
+        reacquire_zone=0.40,
+        head_yaw_gain=25.0,
+        head_yaw_step=2.0,
+    )
+
     # ── Load models ──────────────────────────────────────────────
     console.print("\n[bold]Loading...[/bold]")
 
@@ -178,6 +199,8 @@ def main():
 
     # ── Main loop ────────────────────────────────────────────────
     try:
+        face_detector.load()
+        face_tracker.start()
         for segment in vad_loop(mic, console, vad_cfg=config.vad, silero=silero_model):
             t_stt = time.perf_counter()
             result = stt.transcribe(segment.audio, sample_rate=SAMPLE_RATE)
@@ -237,12 +260,14 @@ def main():
     except KeyboardInterrupt:
         console.print("\n[yellow]Goodbye![/yellow]")
     finally:
-        cam.stop()
         mic.stop()
         stt.unload()
         llm.unload()
+        face_detector.unload()
+        face_tracker.stop()
         if tts:
             tts.unload()
+        cam.stop()
 
 
 if __name__ == "__main__":

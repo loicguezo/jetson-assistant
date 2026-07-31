@@ -164,15 +164,15 @@ class LLM:
                         try:
                             data = json.loads(line[5:])
                             usage = data.get("usage")
-                            # if usage:
-                            #     yield (
-                            #         "",
-                            #         {
-                            #             "done": True,
-                            #             "eval_count": usage.get("completion_tokens", 0),
-                            #         },
-                            #     )
-                            #     return
+                            if usage:
+                                yield (
+                                    "",
+                                    {
+                                        "done": True,
+                                        "eval_count": usage.get("completion_tokens", 0),
+                                    },
+                                )
+                                return
                             content = ((data.get("choices") or [{}])[0].get("delta") or {}).get(
                                 "content", ""
                             )
